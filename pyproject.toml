@@ -1,0 +1,49 @@
+[project]
+name = "ai-context-manager"
+version = "0.1.0"
+description = "Modular context manager for AI-powered tools"
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+dependencies = [
+    "openai",
+    "requests",
+    "jinja2",
+    "tiktoken",
+    "toml"
+]
+
+[project.optional-dependencies]
+vector = [
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0"
+]
+cli = [
+    "click>=8.0.0",
+    "rich>=10.0.0"
+]
+performance = [
+    "psutil>=5.8.0",
+    "memory-profiler>=0.60.0"
+]
+all = [
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+    "click>=8.0.0",
+    "rich>=10.0.0",
+    "psutil>=5.8.0"
+]
+
+[project.scripts]
+ai-context = "ai_context_manager.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/ai-context-manager"
+Repository = "https://github.com/yourusername/ai-context-manager"
+Issues = "https://github.com/yourusername/ai-context-manager/issues"
+readme = "README.md"
+requires-python = ">=3.8"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
