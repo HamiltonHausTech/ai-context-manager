@@ -31,7 +31,7 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: |
-          ai-context-manager/ai-context-manager
+          ${{ secrets.DOCKER_USERNAME }}/ai-context-manager
         tags: |
           type=ref,event=branch
           type=ref,event=pr

@@ -39,7 +39,8 @@ dependencies = [
     "requests",
     "jinja2",
     "tiktoken",
-    "toml"
+    "toml",
+    "urllib3>=2.5.0"  # Fix security vulnerability in 2.3.0
 ]
 
 [project.optional-dependencies]

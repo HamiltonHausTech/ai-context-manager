@@ -1,0 +1,22 @@
+# Safety Policy Configuration
+# This file helps manage security vulnerabilities and false positives
+
+# Ignore specific vulnerabilities (use with caution)
+# Format: <package>==<version>::<vulnerability_id>
+
+# Example (uncomment if needed):
+# urllib3==2.3.0::CVE-2023-45853
+
+# Ignore specific packages from vulnerability scanning
+# (use only for packages that are known to be safe in your context)
+ignore_packages:
+  # - some-package
+
+# Minimum severity level to report
+min_severity: medium
+
+# Include development dependencies in scan
+include_dev_deps: true
+
+# Report only vulnerabilities that affect your Python version
+python_version: "3.8,3.9,3.10,3.11,3.12"
