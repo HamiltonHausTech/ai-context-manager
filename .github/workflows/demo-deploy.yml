@@ -235,7 +235,7 @@ jobs:
         EOF
 
     - name: Create demo release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: demo-v${{ github.run_number }}
         name: Demo Release v${{ github.run_number }}
