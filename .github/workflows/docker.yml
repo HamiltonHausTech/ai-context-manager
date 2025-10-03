@@ -26,6 +26,15 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
+    - name: Verify build context
+      run: |
+        echo "Build context contents:"
+        ls -la
+        echo "Config file check:"
+        ls -la config.toml || echo "config.toml not found"
+        echo "Demo config check:"
+        ls -la demo_apps/demo-config.toml || echo "demo-config.toml not found"
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5

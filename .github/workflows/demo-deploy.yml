@@ -82,6 +82,10 @@ jobs:
         # Copy config file for demo
         cp config.toml demo_apps/demo-config.toml || echo "Using existing demo config"
         
+        # Verify demo config exists
+        ls -la demo_apps/demo-config.toml || echo "Demo config not found"
+        
+        # Start web demo
         timeout 30 python demo_apps/web_demo/app.py &
         sleep 10
         curl -f http://localhost:5000/ || exit 1

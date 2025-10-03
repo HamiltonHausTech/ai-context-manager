@@ -29,9 +29,25 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from ai_context_manager.simple_api import create_agent_context_manager
 from demo_apps.research_assistant.app import ResearchAssistant
 
-# Get the directory containing this file
-DEMO_DIR = os.path.dirname(__file__)
-DEMO_CONFIG_PATH = os.path.join(DEMO_DIR, "demo-config.toml")
+# Find demo config file in common locations
+def find_demo_config():
+    """Find demo config file in common locations."""
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "demo-config.toml"),  # Same directory
+        os.path.join(os.path.dirname(__file__), "..", "demo-config.toml"),  # Parent directory
+        os.path.join(os.path.dirname(__file__), "..", "..", "demo_apps", "demo-config.toml"),  # Project demo dir
+        "demo_apps/demo-config.toml",  # Relative to current working directory
+        "demo-config.toml",  # Current directory
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+    
+    # Return default if not found
+    return "demo_config.toml"
+
+DEMO_CONFIG_PATH = find_demo_config()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ai-context-manager-demo-2025'
