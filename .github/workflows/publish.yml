@@ -44,7 +44,7 @@ jobs:
         python -c "import ai_context_manager; print('Package imports successfully')"
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist-${{ matrix.python-version }}
         path: dist/
