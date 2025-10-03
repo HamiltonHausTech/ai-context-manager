@@ -1,0 +1,199 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[all]
+        pip install pytest pytest-cov pytest-asyncio
+
+    - name: Run linting
+      run: |
+        pip install flake8 black isort
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Check code formatting
+      run: |
+        black --check .
+        isort --check-only .
+
+    - name: Run tests
+      run: |
+        pytest tests/ -v --cov=ai_context_manager --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  test-demos:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        demo: ["research-assistant", "web-demo"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[vector]
+        pip install -r demo_apps/requirements.txt
+
+    - name: Test research assistant demo
+      if: matrix.demo == 'research-assistant'
+      run: |
+        # Test that the demo can be imported and basic functionality works
+        python -c "
+        import sys
+        sys.path.insert(0, '.')
+        from demo_apps.research_assistant.app import ResearchAssistant
+        print('Research assistant demo imports successfully')
+        "
+
+    - name: Test web demo
+      if: matrix.demo == 'web-demo'
+      run: |
+        # Test that the web demo can be imported
+        python -c "
+        import sys
+        sys.path.insert(0, '.')
+        from demo_apps.web_demo.app import app
+        print('Web demo imports successfully')
+        "
+
+  test-imports:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Test basic imports
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        
+        # Test core imports
+        python -c "
+        from ai_context_manager import ContextManager
+        from ai_context_manager.simple_api import create_context_manager
+        from ai_context_manager.config import Config
+        print('Core imports successful')
+        "
+
+    - name: Test vector imports (if available)
+      run: |
+        pip install -e .[vector]
+        python -c "
+        try:
+            from ai_context_manager.store.vector_memory import VectorMemoryStore
+            print('Vector imports successful')
+        except ImportError as e:
+            print(f'Vector imports not available: {e}')
+        "
+
+    - name: Test PostgreSQL imports (if available)
+      run: |
+        pip install -e .[postgres]
+        python -c "
+        try:
+            from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
+            print('PostgreSQL imports successful')
+        except ImportError as e:
+            print(f'PostgreSQL imports not available: {e}')
+        "
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+
+    - name: Security scan with Safety
+      run: |
+        pip install -e .[all]
+        safety check
+
+    - name: Security scan with Bandit
+      run: |
+        bandit -r ai_context_manager/ -f json -o bandit-report.json || true
+        bandit -r ai_context_manager/
+
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Build package
+      run: python -m build
+
+    - name: Check package
+      run: twine check dist/*
+
+    - name: Test package installation
+      run: |
+        pip install dist/*.whl
+        python -c "import ai_context_manager; print('Built package works!')"

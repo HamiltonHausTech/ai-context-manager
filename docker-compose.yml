@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector for production demo
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: ai_context
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: demo_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Web Demo Application
+  web-demo:
+    build:
+      context: .
+      dockerfile: demo_apps/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=ai_context
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=demo_password
+      - FLASK_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./demo_apps:/app/demo_apps
+      - ./ai_context_manager:/app/ai_context_manager
+
+  # Research Assistant CLI Demo
+  research-assistant:
+    build:
+      context: .
+      dockerfile: demo_apps/Dockerfile
+    command: python demo_apps/research_assistant/app.py
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=ai_context
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=demo_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./demo_apps:/app/demo_apps
+      - ./ai_context_manager:/app/ai_context_manager
+
+volumes:
+  postgres_data:

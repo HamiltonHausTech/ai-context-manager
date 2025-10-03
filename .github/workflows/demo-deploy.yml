@@ -1,0 +1,262 @@
+name: Deploy Demo Applications
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'demo_apps/**'
+      - 'ai_context_manager/**'
+  workflow_dispatch:
+    inputs:
+      deploy_type:
+        description: 'Deployment type'
+        required: true
+        default: 'web-demo'
+        type: choice
+        options:
+          - web-demo
+          - research-assistant
+          - all
+
+jobs:
+  deploy-web-demo:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_type == 'web-demo' || github.event.inputs.deploy_type == 'all' || (github.event_name == 'push' && contains(github.event.head_commit.message, 'demo'))
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: ai_context
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: demo_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[production]
+        pip install -r demo_apps/requirements.txt
+
+    - name: Wait for PostgreSQL
+      run: |
+        until pg_isready -h localhost -p 5432; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
+
+    - name: Initialize database
+      run: |
+        PGPASSWORD=demo_password psql -h localhost -U postgres -d ai_context -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Test web demo startup
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_DB: ai_context
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: demo_password
+      run: |
+        timeout 30 python demo_apps/web_demo/app.py &
+        sleep 10
+        curl -f http://localhost:5000/ || exit 1
+        echo "Web demo started successfully"
+
+  deploy-research-assistant:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_type == 'research-assistant' || github.event.inputs.deploy_type == 'all'
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: ai_context
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: demo_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[production]
+
+    - name: Wait for PostgreSQL
+      run: |
+        until pg_isready -h localhost -p 5432; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
+
+    - name: Initialize database
+      run: |
+        PGPASSWORD=demo_password psql -h localhost -U postgres -d ai_context -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+    - name: Test research assistant
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_DB: ai_context
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: demo_password
+      run: |
+        timeout 60 python demo_apps/research_assistant/app.py
+        echo "Research assistant demo completed successfully"
+
+  docker-build:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_type == 'all'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./demo_apps/Dockerfile
+        push: false
+        tags: ai-context-manager:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image
+      run: |
+        docker run --rm ai-context-manager:latest python -c "import ai_context_manager; print('Docker image works!')"
+
+  performance-test:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_type == 'all'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[vector]
+
+    - name: Run performance benchmark
+      run: |
+        python benchmark_performance.py
+        echo "Performance benchmark completed"
+
+  create-demo-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_type == 'all'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create demo assets
+      run: |
+        mkdir -p demo-assets
+        
+        # Create demo configuration
+        cat > demo-assets/demo-config.toml << EOF
+        [summarizer]
+        type = "auto_fallback"
+        model = "mistral"
+
+        [feedback_store]
+        type = "json"
+        filepath = "feedback.json"
+
+        [memory_store]
+        type = "vector"
+        collection_name = "agent_memory"
+        persist_directory = "./chroma_db"
+        embedding_model = "all-MiniLM-L6-v2"
+        EOF
+        
+        # Create demo README
+        cat > demo-assets/README.md << EOF
+        # AI Context Manager Demo
+        
+        This is a demonstration of the AI Context Manager with:
+        
+        - Research Assistant CLI Demo
+        - Web-based Interactive Demo
+        - Docker Deployment
+        - Performance Benchmarks
+        
+        ## Quick Start
+        
+        \`\`\`bash
+        # Install
+        pip install ai-context-manager[vector]
+        
+        # Run research assistant
+        python demo_apps/research_assistant/app.py
+        
+        # Run web demo
+        cd demo_apps/web_demo && python app.py
+        \`\`\`
+        EOF
+
+    - name: Create demo release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: demo-v${{ github.run_number }}
+        name: Demo Release v${{ github.run_number }}
+        body: |
+          ## Demo Release
+          
+          This release contains demo applications for the AI Context Manager.
+          
+          ### What's Included
+          - Research Assistant CLI Demo
+          - Web-based Interactive Demo  
+          - Docker deployment configuration
+          - Performance benchmarks
+          
+          ### Quick Start
+          ```bash
+          pip install ai-context-manager[vector]
+          python demo_apps/research_assistant/app.py
+          ```
+        files: demo-assets/*
+        draft: true
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,160 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      test_pypi:
+        description: 'Publish to Test PyPI only'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Build package
+      run: python -m build
+
+    - name: Check package
+      run: twine check dist/*
+
+    - name: Test package installation
+      run: |
+        pip install dist/*.whl
+        python -c "import ai_context_manager; print('Package imports successfully')"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-${{ matrix.python-version }}
+        path: dist/
+
+  # Job to publish to Test PyPI
+  publish-test-pypi:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_pypi == 'true' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-3.11
+        path: dist/
+
+    - name: Publish to Test PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      run: |
+        twine upload --repository testpypi dist/*
+
+    - name: Verify Test PyPI installation
+      run: |
+        pip install --index-url https://test.pypi.org/simple/ ai-context-manager
+        python -c "import ai_context_manager; print('Test PyPI package works!')"
+
+  # Job to publish to PyPI (only on release)
+  publish-pypi:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.inputs.test_pypi != 'true'
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-3.11
+        path: dist/
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        twine upload dist/*
+
+    - name: Verify PyPI installation
+      run: |
+        pip install ai-context-manager
+        python -c "import ai_context_manager; print('PyPI package works!')"
+
+  # Job to create GitHub release
+  create-release:
+    needs: [build-and-publish]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-3.11
+        path: dist/
+
+    - name: Create release assets
+      run: |
+        # Create release notes
+        echo "## AI Context Manager ${{ github.event.release.tag_name }}" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Installation" >> release_notes.md
+        echo '```bash' >> release_notes.md
+        echo "# Basic installation" >> release_notes.md
+        echo "pip install ai-context-manager" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "# With vector database support" >> release_notes.md
+        echo "pip install ai-context-manager[vector]" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "# Production setup" >> release_notes.md
+        echo "pip install ai-context-manager[production]" >> release_notes.md
+        echo '```' >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Quick Start" >> release_notes.md
+        echo '```python' >> release_notes.md
+        echo "from ai_context_manager.simple_api import create_agent_context_manager" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "# Create agent with persistent memory" >> release_notes.md
+        echo "agent = create_agent_context_manager('my-agent')" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "# Add goals and track progress" >> release_notes.md
+        echo "agent.add_goal('goal-1', 'Research AI trends', priority=2.0)" >> release_notes.md
+        echo "agent.add_task('task-1', 'Market Research', 'Found insights')" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "# Get intelligent context" >> release_notes.md
+        echo "context = agent.get_context('AI research trends', token_budget=1000)" >> release_notes.md
+        echo '```' >> release_notes.md
+
+    - name: Update release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

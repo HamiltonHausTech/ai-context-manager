@@ -10,6 +10,7 @@ from ai_context_manager.components import (
 from ai_context_manager.store.json_store import JSONFeedbackStore
 from ai_context_manager.store.json_memory import JSONMemoryStore
 from ai_context_manager.store.vector_memory import VectorMemoryStore
+from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
 from ai_context_manager.config import Config
 from ai_context_manager.store.sqlite_store import SQLiteFeedbackStore
 from ai_context_manager.summarizers import (
@@ -160,14 +161,32 @@ def load_stores_from_config(config: Dict):
         feedback_store = JSONFeedbackStore(fb_conf.get("filepath", "feedback.json"))
 
     mem_type = mem_conf.get("type", "json")
-    if mem_type == "vector":
+    if mem_type == "postgres_vector":
+        try:
+            memory_store = PostgreSQLVectorMemoryStore(
+                host=mem_conf.get("host", "localhost"),
+                port=mem_conf.get("port", 5432),
+                database=mem_conf.get("database", "ai_context"),
+                user=mem_conf.get("user", "postgres"),
+                password=mem_conf.get("password", ""),
+                table_name=mem_conf.get("table_name", "agent_memory"),
+                embedding_dimension=mem_conf.get("embedding_dimension", 384),
+                max_connections=mem_conf.get("max_connections", 20),
+                index_type=mem_conf.get("index_type", "hnsw"),
+                index_parameters=mem_conf.get("index_parameters", {})
+            )
+            logging.info("Using PostgreSQL vector database memory store")
+        except ImportError as e:
+            logging.warning(f"PostgreSQL vector database not available: {e}. Falling back to JSON store.")
+            memory_store = JSONMemoryStore(mem_conf.get("filepath", "memory.json"))
+    elif mem_type == "vector":
         try:
             memory_store = VectorMemoryStore(
                 collection_name=mem_conf.get("collection_name", "agent_memory"),
                 persist_directory=mem_conf.get("persist_directory", "./chroma_db"),
                 embedding_model=mem_conf.get("embedding_model", "all-MiniLM-L6-v2")
             )
-            logging.info("Using vector database memory store")
+            logging.info("Using ChromaDB vector memory store")
         except ImportError as e:
             logging.warning(f"Vector database not available: {e}. Falling back to JSON store.")
             memory_store = JSONMemoryStore(mem_conf.get("filepath", "memory.json"))
