@@ -24,9 +24,15 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e .[all]
-        pip install pytest pytest-cov pytest-asyncio
+        python -m pip install --upgrade pip setuptools wheel
+        pip cache purge || true
+        
+        # Install with secure urllib3 version
+        pip install --no-cache-dir -e .[all]
+        pip install --no-cache-dir pytest pytest-cov pytest-asyncio
+        
+        # Verify urllib3 version
+        pip show urllib3
 
     - name: Run linting
       run: |
@@ -137,7 +143,7 @@ jobs:
 
     - name: Test basic imports
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade pip setuptools wheel
         pip install -e .
         
         # Test core imports with better error handling

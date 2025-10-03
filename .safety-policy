@@ -4,8 +4,9 @@
 # Ignore specific vulnerabilities (use with caution)
 # Format: <package>==<version>::<vulnerability_id>
 
-# Example (uncomment if needed):
-# urllib3==2.3.0::CVE-2023-45853
+# Ignore urllib3 2.3.0 vulnerability if we're using a secure version
+# urllib3==2.3.0::CVE-2025-50181
+# urllib3==2.3.0::CVE-2025-50182
 
 # Ignore specific packages from vulnerability scanning
 # (use only for packages that are known to be safe in your context)
