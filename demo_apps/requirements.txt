@@ -1,0 +1,17 @@
+# Demo Applications Requirements
+
+# Web Demo Requirements
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+
+# Research Assistant Requirements
+asyncio
+
+# Optional: For enhanced functionality
+python-dotenv==1.0.0
+gunicorn==21.2.0
+
+# Security: Ensure secure versions
+urllib3>=2.5.0
+requests>=2.31.0
+cryptography>=41.0.0

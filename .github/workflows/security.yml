@@ -32,7 +32,14 @@ jobs:
     - name: Install project dependencies
       run: |
         pip install -e .[all]
-        pip install -r demo_apps/requirements.txt
+        
+        # Install demo requirements if available
+        if [ -f "demo_apps/requirements.txt" ]; then
+          echo "Installing demo app requirements..."
+          pip install -r demo_apps/requirements.txt
+        else
+          echo "Warning: demo_apps/requirements.txt not found, skipping demo dependencies"
+        fi
 
     - name: Run pip-audit (comprehensive security check)
       run: |

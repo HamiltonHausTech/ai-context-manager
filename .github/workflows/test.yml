@@ -67,6 +67,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v5
 
+    - name: Verify file structure
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        echo "Demo apps directory:"
+        ls -la demo_apps/ || echo "demo_apps directory not found"
+        echo "Requirements file check:"
+        ls -la demo_apps/requirements.txt || echo "requirements.txt not found"
+
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
@@ -76,7 +86,14 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e .[vector]
-        pip install -r demo_apps/requirements.txt
+        
+        # Check if demo requirements file exists and install if available
+        if [ -f "demo_apps/requirements.txt" ]; then
+          echo "Installing demo app requirements..."
+          pip install -r demo_apps/requirements.txt
+        else
+          echo "Warning: demo_apps/requirements.txt not found, skipping demo dependencies"
+        fi
 
     - name: Test research assistant demo
       if: matrix.demo == 'research-assistant'
