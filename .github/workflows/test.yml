@@ -120,12 +120,37 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .
         
-        # Test core imports
+        # Test core imports with better error handling
         python -c "
-        from ai_context_manager import ContextManager
-        from ai_context_manager.simple_api import create_context_manager
-        from ai_context_manager.config import Config
-        print('Core imports successful')
+        try:
+            import ai_context_manager
+            print(f'[OK] Package imported - version: {ai_context_manager.__version__}')
+        except Exception as e:
+            print(f'[FAIL] Package import failed: {e}')
+            exit(1)
+        
+        try:
+            from ai_context_manager import ContextManager, Config, Feedback
+            print('[OK] Core classes imported successfully')
+        except Exception as e:
+            print(f'[FAIL] Core class imports failed: {e}')
+            exit(1)
+        
+        try:
+            ctx = ContextManager()
+            print('[OK] ContextManager instantiation successful')
+        except Exception as e:
+            print(f'[FAIL] ContextManager instantiation failed: {e}')
+            exit(1)
+        
+        try:
+            config = Config('config.toml')
+            print('[OK] Config instantiation successful')
+        except Exception as e:
+            print(f'[FAIL] Config instantiation failed: {e}')
+            exit(1)
+        
+        print('[SUCCESS] All basic imports and instantiations work!')
         "
 
     - name: Test vector imports (if available)

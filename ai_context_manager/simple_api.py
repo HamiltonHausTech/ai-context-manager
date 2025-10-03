@@ -7,13 +7,31 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 
 from .context_manager import ContextManager
-from .semantic_context_manager import SemanticContextManager
-from .agent_context_manager import AgentContextManager
-from .semantic_agent_context_manager import SemanticAgentContextManager
 from .config import Config
 from .utils import load_stores_from_config, load_summarizer
 from .feedback import Feedback
-from .components import ContextComponent, TaskSummaryComponent, LongTermMemoryComponent
+from .components import ContextComponent, TaskSummaryComponent
+
+# Optional imports with fallbacks
+try:
+    from .semantic_context_manager import SemanticContextManager
+except ImportError:
+    SemanticContextManager = None
+
+try:
+    from .agent_context_manager import AgentContextManager
+except ImportError:
+    AgentContextManager = None
+
+try:
+    from .semantic_agent_context_manager import SemanticAgentContextManager
+except ImportError:
+    SemanticAgentContextManager = None
+
+try:
+    from .components import LongTermMemoryComponent
+except ImportError:
+    LongTermMemoryComponent = None
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +81,7 @@ class ContextManagerBuilder:
             summarizer = load_summarizer(config_obj if config_obj else config_data)
             
             # Create base context manager
-            if self.use_semantic:
+            if self.use_semantic and SemanticContextManager is not None:
                 base_ctx = SemanticContextManager(
                     feedback=feedback,
                     memory_store=memory_store,
@@ -80,10 +98,14 @@ class ContextManagerBuilder:
             
             # Return appropriate manager
             if self.agent_id:
-                if self.use_semantic:
+                if self.use_semantic and SemanticAgentContextManager is not None:
                     return SemanticAgentContextManager(self.agent_id, base_ctx)
-                else:
+                elif AgentContextManager is not None:
                     return AgentContextManager(self.agent_id, base_ctx)
+                else:
+                    # Fallback to base context manager if agent managers not available
+                    logger.warning("Agent context managers not available, using base context manager")
+                    return base_ctx
             else:
                 return base_ctx
                 
