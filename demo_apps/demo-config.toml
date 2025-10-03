@@ -1,0 +1,21 @@
+# Demo Configuration for AI Context Manager
+# This configuration is optimized for demo applications
+
+[summarizer]
+type = "naive"  # Use naive summarizer for demos to avoid API dependencies
+model = "naive"
+
+[feedback_store]
+type = "json"
+filepath = "demo_feedback.json"
+
+[memory_store]
+type = "json"  # Use JSON for demos to avoid vector DB dependencies
+filepath = "demo_memory.json"
+
+# Optional: Vector database configuration (uncomment to enable)
+# [memory_store]
+# type = "vector"
+# collection_name = "demo_memory"
+# persist_directory = "./demo_chroma_db"
+# embedding_model = "all-MiniLM-L6-v2"

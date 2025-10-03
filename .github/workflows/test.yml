@@ -109,6 +109,9 @@ jobs:
     - name: Test web demo
       if: matrix.demo == 'web-demo'
       run: |
+        # Copy config file for demo
+        cp config.toml demo_apps/demo-config.toml || echo "Using existing demo config"
+        
         # Test that the web demo can be imported
         python -c "
         import sys

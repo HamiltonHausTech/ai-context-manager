@@ -79,6 +79,9 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: demo_password
       run: |
+        # Copy config file for demo
+        cp config.toml demo_apps/demo-config.toml || echo "Using existing demo config"
+        
         timeout 30 python demo_apps/web_demo/app.py &
         sleep 10
         curl -f http://localhost:5000/ || exit 1
@@ -136,6 +139,9 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: demo_password
       run: |
+        # Copy config file for demo
+        cp config.toml demo_apps/demo-config.toml || echo "Using existing demo config"
+        
         timeout 60 python demo_apps/research_assistant/app.py
         echo "Research assistant demo completed successfully"
 

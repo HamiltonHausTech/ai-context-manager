@@ -46,10 +46,10 @@ class ResearchAssistant:
     - Multi-topic research coordination
     """
     
-    def __init__(self, agent_id: str = "research-assistant"):
+    def __init__(self, agent_id: str = "research-assistant", config_path: str = None):
         """Initialize the research assistant."""
         self.agent_id = agent_id
-        self.agent = create_agent_context_manager(agent_id)
+        self.agent = create_agent_context_manager(agent_id, config_path=config_path)
         self.session_start = datetime.now()
         
         # Initialize research goals

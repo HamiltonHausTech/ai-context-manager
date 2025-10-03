@@ -3,6 +3,7 @@ Simplified API for easy usage of the AI Context Manager
 """
 
 import logging
+import os
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 
@@ -39,13 +40,32 @@ class ContextManagerBuilder:
     """Builder pattern for easy context manager creation."""
     
     def __init__(self):
-        self.config_path = "config.toml"
+        # Try to find config.toml in common locations
+        self.config_path = self._find_config_file()
         self.agent_id = None
         self.use_semantic = True
         self.custom_config = None
+    
+    def _find_config_file(self):
+        """Find config.toml in common locations."""
+        possible_paths = [
+            "config.toml",  # Current directory
+            "../config.toml",  # Parent directory
+            "../../config.toml",  # Grandparent directory
+            os.path.join(os.path.dirname(__file__), "..", "..", "config.toml"),  # Project root
+        ]
         
-    def with_config(self, config_path: str = "config.toml"):
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        
+        # If not found, return default
+        return "config.toml"
+        
+    def with_config(self, config_path: str = None):
         """Set configuration file path."""
+        if config_path is None:
+            config_path = self._find_config_file()
         self.config_path = config_path
         return self
     
@@ -256,7 +276,7 @@ class SimpleContextManager:
 
 # === Convenience Functions ===
 
-def create_context_manager(config_path: str = "config.toml", 
+def create_context_manager(config_path: str = None, 
                           agent_id: Optional[str] = None,
                           use_semantic: bool = True) -> SimpleContextManager:
     """Create a context manager with sensible defaults."""
@@ -272,8 +292,8 @@ def create_context_manager(config_path: str = "config.toml",
     return SimpleContextManager(ctx)
 
 
-def create_agent_context_manager(agent_id: str, 
-                                config_path: str = "config.toml",
+def create_agent_context_manager(agent_id: str,
+                                config_path: str = None,
                                 use_semantic: bool = True) -> SimpleContextManager:
     """Create an agent context manager with sensible defaults."""
     return create_context_manager(config_path, agent_id, use_semantic)

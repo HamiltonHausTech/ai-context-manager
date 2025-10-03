@@ -29,6 +29,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from ai_context_manager.simple_api import create_agent_context_manager
 from demo_apps.research_assistant.app import ResearchAssistant
 
+# Get the directory containing this file
+DEMO_DIR = os.path.dirname(__file__)
+DEMO_CONFIG_PATH = os.path.join(DEMO_DIR, "demo-config.toml")
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ai-context-manager-demo-2025'
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -144,10 +148,18 @@ def initialize_assistant():
     """Initialize the research assistant."""
     global assistant
     try:
-        assistant = ResearchAssistant("web-demo-assistant")
+        # Use demo configuration
+        assistant = ResearchAssistant("web-demo-assistant", config_path=DEMO_CONFIG_PATH)
         print("✅ Research Assistant initialized successfully")
     except Exception as e:
         print(f"❌ Failed to initialize Research Assistant: {e}")
+        # Fallback: try without config
+        try:
+            assistant = ResearchAssistant("web-demo-assistant")
+            print("✅ Research Assistant initialized with fallback config")
+        except Exception as e2:
+            print(f"❌ Failed to initialize Research Assistant with fallback: {e2}")
+            assistant = None
 
 if __name__ == '__main__':
     print("🚀 Starting AI Context Manager Web Demo...")
