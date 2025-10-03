@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ai-context-manager"
 version = "0.2.0"
@@ -11,7 +15,7 @@ maintainers = [
     { name = "AI Context Manager Team", email = "team@ai-context-manager.com" }
 ]
 keywords = [
-    "ai", "context-management", "vector-database", "agents", "llm", "embeddings", 
+    "ai", "context-management", "vector-database", "agents", "llm", "embeddings",
     "postgresql", "pgvector", "chromadb", "semantic-search", "memory-management"
 ]
 classifiers = [
@@ -29,6 +33,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
+
 dependencies = [
     "openai",
     "requests",
@@ -78,9 +83,74 @@ Repository = "https://github.com/ai-context-manager/ai-context-manager"
 Documentation = "https://docs.ai-context-manager.com"
 Issues = "https://github.com/ai-context-manager/ai-context-manager/issues"
 Changelog = "https://github.com/ai-context-manager/ai-context-manager/blob/main/CHANGELOG.md"
-readme = "README.md"
+
 requires-python = ">=3.8"
 
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ai_context_manager*"]
+
+[tool.setuptools.package-data]
+"ai_context_manager" = ["py.typed"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+# pytest configuration
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["ai_context_manager"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
