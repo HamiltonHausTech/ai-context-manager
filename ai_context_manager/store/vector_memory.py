@@ -16,10 +16,18 @@ except ImportError:
     CHROMADB_AVAILABLE = False
 
 try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
+    import sys
+    # Check Python version compatibility for sentence_transformers
+    if sys.version_info >= (3, 10):
+        from sentence_transformers import SentenceTransformer
+        SENTENCE_TRANSFORMERS_AVAILABLE = True
+    else:
+        # Python 3.9 has compatibility issues with newer sentence_transformers
+        SENTENCE_TRANSFORMERS_AVAILABLE = False
+        SentenceTransformer = None
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
 
 from .base import MemoryStore
 
@@ -46,7 +54,12 @@ class VectorMemoryStore(MemoryStore):
             raise ImportError("ChromaDB not available. Install with: pip install chromadb")
         
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
-            raise ImportError("SentenceTransformers not available. Install with: pip install sentence-transformers")
+            import sys
+            if sys.version_info < (3, 10):
+                raise ImportError("SentenceTransformers requires Python 3.10+ for compatibility. Current version: {}.{}.{}".format(
+                    sys.version_info.major, sys.version_info.minor, sys.version_info.micro))
+            else:
+                raise ImportError("SentenceTransformers not available. Install with: pip install sentence-transformers")
         
         self.collection_name = collection_name
         self.persist_directory = persist_directory

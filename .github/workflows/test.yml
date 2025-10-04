@@ -27,9 +27,20 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         pip cache purge || true
         
-        # Install with secure urllib3 version
-        pip install --no-cache-dir -e .[all]
+        # Install base dependencies
+        pip install --no-cache-dir -e .
         pip install --no-cache-dir pytest pytest-cov pytest-asyncio
+        
+        # Install vector dependencies only for Python 3.10+
+        if python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
+          echo "Installing vector dependencies for Python 3.10+"
+          pip install --no-cache-dir -e .[vector]
+        else
+          echo "Skipping vector dependencies for Python ${{ matrix.python-version }}"
+        fi
+        
+        # Install other optional dependencies
+        pip install --no-cache-dir -e .[cli,performance]
         
         # Verify urllib3 version
         pip show urllib3
