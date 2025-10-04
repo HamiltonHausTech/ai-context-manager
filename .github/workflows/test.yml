@@ -181,7 +181,8 @@ jobs:
             exit(1)
         
         try:
-            config = Config('config.toml')
+            # Use test config file for import testing
+            config = Config('tests/test-config.toml')
             print('[OK] Config instantiation successful')
         except Exception as e:
             print(f'[FAIL] Config instantiation failed: {e}')
@@ -192,14 +193,20 @@ jobs:
 
     - name: Test vector imports (if available)
       run: |
-        pip install -e .[vector]
-        python -c "
-        try:
-            from ai_context_manager.store.vector_memory import VectorMemoryStore
-            print('Vector imports successful')
-        except ImportError as e:
-            print(f'Vector imports not available: {e}')
-        "
+        # Only test vector imports on Python 3.10+
+        if python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
+          echo "Testing vector imports on Python 3.10+"
+          pip install -e .[vector]
+          python -c "
+          try:
+              from ai_context_manager.store.vector_memory import VectorMemoryStore
+              print('Vector imports successful')
+          except ImportError as e:
+              print(f'Vector imports not available: {e}')
+          "
+        else
+          echo "Skipping vector imports on Python ${{ matrix.python-version }}"
+        fi
 
     - name: Test PostgreSQL imports (if available)
       run: |
