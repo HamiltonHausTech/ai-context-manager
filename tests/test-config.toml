@@ -1,0 +1,17 @@
+# Test configuration for AI Context Manager
+# This configuration is designed for testing purposes
+
+[summarizer]
+type = "naive"  # No external dependencies for tests
+
+[feedback_store]
+type = "json"
+filepath = "test_feedback.json"
+
+[memory_store]
+type = "json"  # No vector DB dependencies for tests
+filepath = "test_memory.json"
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
