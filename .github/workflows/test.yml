@@ -202,7 +202,7 @@ try:
     from ai_context_manager.store.vector_memory import VectorMemoryStore
     print('Vector imports successful')
 except ImportError as e:
-    print(f'Vector imports not available: {e}')
+    print('Vector imports not available:', str(e))
 "
         else
           echo "Skipping vector imports on Python ${{ matrix.python-version }}"
@@ -216,7 +216,7 @@ try:
     from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
     print('PostgreSQL imports successful')
 except ImportError as e:
-    print(f'PostgreSQL imports not available: {e}')
+    print('PostgreSQL imports not available:', str(e))
 "
 
   formatting-check:
