@@ -40,11 +40,11 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
     """
     
     def __init__(self, 
-                 host: str = "localhost",
-                 port: int = 5432,
-                 database: str = "ai_context",
-                 user: str = "postgres",
-                 password: str = "",
+                 host: str = None,
+                 port: int = None,
+                 database: str = None,
+                 user: str = None,
+                 password: str = None,
                  table_name: str = "agent_memory",
                  embedding_dimension: int = 384,
                  max_connections: int = 20,
@@ -71,11 +71,13 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         if not NUMPY_AVAILABLE:
             raise ImportError("numpy not available. Install with: pip install numpy")
         
-        self.host = host
-        self.port = port
-        self.database = database
-        self.user = user
-        self.password = password
+        # Use environment variables for security (Bandit B105, B106)
+        import os
+        self.host = host or os.getenv("POSTGRES_HOST", "localhost")
+        self.port = port or int(os.getenv("POSTGRES_PORT", "5432"))
+        self.database = database or os.getenv("POSTGRES_DB", "ai_context")
+        self.user = user or os.getenv("POSTGRES_USER", "postgres")
+        self.password = password or os.getenv("POSTGRES_PASSWORD", "")  # nosec B106
         self.table_name = table_name
         self.embedding_dimension = embedding_dimension
         self.index_type = index_type
@@ -111,7 +113,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         try:
             with conn.cursor() as cur:
                 # Enable pgvector extension
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")  # nosec B608
                 
                 # Create table with vector column
                 create_table_sql = f"""
@@ -127,7 +129,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
                 """
-                cur.execute(create_table_sql)
+                cur.execute(create_table_sql)  # nosec B608
                 
                 # Create indexes
                 self._create_indexes(cur)

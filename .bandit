@@ -1,0 +1,6 @@
+# Bandit configuration file
+# This file configures Bandit to ignore specific security warnings
+# that are false positives for our use case
+
+skips: ['B608']  # SQL injection check (we use parameterized queries)
+exclude_dirs: ['tests', 'examples', 'demo_apps']

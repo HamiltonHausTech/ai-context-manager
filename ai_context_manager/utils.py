@@ -168,7 +168,7 @@ def load_stores_from_config(config: Dict):
                 port=mem_conf.get("port", 5432),
                 database=mem_conf.get("database", "ai_context"),
                 user=mem_conf.get("user", "postgres"),
-                password=mem_conf.get("password", ""),
+                password=mem_conf.get("password", os.getenv("POSTGRES_PASSWORD", "")),  # nosec B106
                 table_name=mem_conf.get("table_name", "agent_memory"),
                 embedding_dimension=mem_conf.get("embedding_dimension", 384),
                 max_connections=mem_conf.get("max_connections", 20),
