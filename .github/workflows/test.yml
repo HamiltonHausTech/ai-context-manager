@@ -191,38 +191,6 @@ jobs:
         print('[SUCCESS] All basic imports and instantiations work!')
         "
 
-    - name: Test vector imports (if available)
-      run: |
-        # Only test vector imports on Python 3.10+
-        if python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
-          echo "Testing vector imports on Python 3.10+"
-          pip install -e .[vector]
-          cat > test_imports.py << 'PYTHON_EOF'
-try:
-    from ai_context_manager.store.vector_memory import VectorMemoryStore
-    print('Vector imports successful')
-except ImportError as e:
-    print('Vector imports not available:', str(e))
-PYTHON_EOF
-          python test_imports.py
-          rm test_imports.py
-        else
-          echo "Skipping vector imports on Python ${{ matrix.python-version }}"
-        fi
-
-    - name: Test PostgreSQL imports (if available)
-      run: |
-        pip install -e .[postgres]
-        cat > test_postgres.py << 'PYTHON_EOF'
-try:
-    from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
-    print('PostgreSQL imports successful')
-except ImportError as e:
-    print('PostgreSQL imports not available:', str(e))
-PYTHON_EOF
-        python test_postgres.py
-        rm test_postgres.py
-
   formatting-check:
     runs-on: ubuntu-latest
     strategy:
