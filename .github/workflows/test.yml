@@ -197,11 +197,13 @@ jobs:
         if python -c "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"; then
           echo "Testing vector imports on Python 3.10+"
           pip install -e .[vector]
-          echo "try:
+          cat > test_imports.py << 'PYTHON_EOF'
+try:
     from ai_context_manager.store.vector_memory import VectorMemoryStore
     print('Vector imports successful')
 except ImportError as e:
-    print('Vector imports not available:', str(e))" > test_imports.py
+    print('Vector imports not available:', str(e))
+PYTHON_EOF
           python test_imports.py
           rm test_imports.py
         else
@@ -211,11 +213,13 @@ except ImportError as e:
     - name: Test PostgreSQL imports (if available)
       run: |
         pip install -e .[postgres]
-        echo "try:
+        cat > test_postgres.py << 'PYTHON_EOF'
+try:
     from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
     print('PostgreSQL imports successful')
 except ImportError as e:
-    print('PostgreSQL imports not available:', str(e))" > test_postgres.py
+    print('PostgreSQL imports not available:', str(e))
+PYTHON_EOF
         python test_postgres.py
         rm test_postgres.py
 
