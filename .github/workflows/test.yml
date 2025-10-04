@@ -198,12 +198,12 @@ jobs:
           echo "Testing vector imports on Python 3.10+"
           pip install -e .[vector]
           python -c "
-          try:
-              from ai_context_manager.store.vector_memory import VectorMemoryStore
-              print('Vector imports successful')
-          except ImportError as e:
-              print(f'Vector imports not available: {e}')
-          "
+try:
+    from ai_context_manager.store.vector_memory import VectorMemoryStore
+    print('Vector imports successful')
+except ImportError as e:
+    print(f'Vector imports not available: {e}')
+"
         else
           echo "Skipping vector imports on Python ${{ matrix.python-version }}"
         fi
@@ -212,12 +212,12 @@ jobs:
       run: |
         pip install -e .[postgres]
         python -c "
-        try:
-            from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
-            print('PostgreSQL imports successful')
-        except ImportError as e:
-            print(f'PostgreSQL imports not available: {e}')
-        "
+try:
+    from ai_context_manager.store.postgres_vector_memory import PostgreSQLVectorMemoryStore
+    print('PostgreSQL imports successful')
+except ImportError as e:
+    print(f'PostgreSQL imports not available: {e}')
+"
 
   formatting-check:
     runs-on: ubuntu-latest
