@@ -23,9 +23,7 @@ services:
 
   # Web Demo Application
   web-demo:
-    build:
-      context: .
-      dockerfile: demo_apps/Dockerfile
+    image: ${DOCKER_USERNAME:-ai-context-manager}/ai-context-manager:latest
     ports:
       - "5000:5000"
     environment:
@@ -38,9 +36,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./demo_apps:/app/demo_apps
-      - ./ai_context_manager:/app/ai_context_manager
 
   # Research Assistant CLI Demo
   research-assistant:
