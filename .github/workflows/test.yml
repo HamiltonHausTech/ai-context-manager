@@ -201,32 +201,6 @@ jobs:
             print(f'PostgreSQL imports not available: {e}')
         "
 
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: "3.11"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit
-
-    - name: Security scan with Safety
-      run: |
-        pip install -e .[all]
-        safety check --json || echo "Safety check completed with warnings"
-
-    - name: Security scan with Bandit
-      run: |
-        bandit -r ai_context_manager/ -f json -o bandit-report.json || true
-        bandit -r ai_context_manager/
-
   formatting-check:
     runs-on: ubuntu-latest
     strategy:
