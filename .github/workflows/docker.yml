@@ -157,7 +157,7 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: |
-          ai-context-manager:security-scan
+          ai-context-manager
         tags: |
           type=raw,value=security-scan
 
