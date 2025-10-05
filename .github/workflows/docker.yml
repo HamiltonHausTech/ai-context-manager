@@ -176,11 +176,18 @@ jobs:
         echo "All Docker images:"
         docker images
 
-    - name: Run Trivy vulnerability scanner
+    - name: Run Trivy vulnerability scanner (table format)
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: '${{ secrets.DOCKER_USERNAME }}/ai-context-manager:latest'
-        format: 'sarif,table'
+        format: 'table'
+        ignore-unfixed: true
+
+    - name: Run Trivy vulnerability scanner (SARIF format)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ secrets.DOCKER_USERNAME }}/ai-context-manager:latest'
+        format: 'sarif'
         output: 'trivy-results.sarif'
         ignore-unfixed: true
 
