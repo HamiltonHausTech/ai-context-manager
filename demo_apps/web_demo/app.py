@@ -61,6 +61,29 @@ def index():
     """Main page."""
     return render_template('index.html')
 
+@app.route('/health')
+def health():
+    """Health check endpoint for Docker."""
+    try:
+        # Basic health check
+        if assistant is None:
+            return jsonify({"status": "unhealthy", "reason": "assistant not initialized"}), 503
+        
+        # Test basic functionality
+        stats = assistant.get_stats()
+        return jsonify({
+            "status": "healthy",
+            "assistant": "initialized",
+            "components": len(stats.get('components', {})),
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy", 
+            "reason": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
+
 @app.route('/api/status')
 def get_status():
     """Get agent status."""
@@ -165,16 +188,24 @@ def initialize_assistant():
     global assistant
     try:
         # Use demo configuration
+        print(f"🔧 Using config: {DEMO_CONFIG_PATH}")
         assistant = ResearchAssistant("web-demo-assistant", config_path=DEMO_CONFIG_PATH)
         print("✅ Research Assistant initialized successfully")
     except Exception as e:
         print(f"❌ Failed to initialize Research Assistant: {e}")
+        print(f"   Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        
         # Fallback: try without config
         try:
+            print("🔄 Trying fallback initialization...")
             assistant = ResearchAssistant("web-demo-assistant")
             print("✅ Research Assistant initialized with fallback config")
         except Exception as e2:
             print(f"❌ Failed to initialize Research Assistant with fallback: {e2}")
+            print(f"   Error type: {type(e2).__name__}")
+            traceback.print_exc()
             assistant = None
 
 if __name__ == '__main__':
