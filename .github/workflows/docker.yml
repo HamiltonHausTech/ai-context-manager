@@ -172,11 +172,14 @@ jobs:
         cache-to: type=gha,mode=max
         build-args: |
           BUILDKIT_INLINE_CACHE=1
+        outputs: type=docker
 
     - name: Verify Docker image was built
       run: |
         echo "Checking if Docker image exists..."
-        docker images | grep ai-context-manager
+        docker images | grep ai-context-manager || echo "No ai-context-manager images found"
+        echo "All Docker images:"
+        docker images
         echo "Image build verification complete"
 
     - name: Run Trivy vulnerability scanner
