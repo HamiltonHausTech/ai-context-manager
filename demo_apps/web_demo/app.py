@@ -70,11 +70,12 @@ def health():
             return jsonify({"status": "unhealthy", "reason": "assistant not initialized"}), 503
         
         # Test basic functionality
-        stats = assistant.get_stats()
+        status = assistant.get_agent_status()
         return jsonify({
             "status": "healthy",
             "assistant": "initialized",
-            "components": len(stats.get('components', {})),
+            "agent_id": status.get('agent_id', 'unknown'),
+            "goals_count": len(status.get('goals', [])),
             "timestamp": datetime.now().isoformat()
         }), 200
     except Exception as e:
@@ -211,4 +212,12 @@ def initialize_assistant():
 if __name__ == '__main__':
     print("🚀 Starting AI Context Manager Web Demo...")
     initialize_assistant()
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    
+    # Check if running in production (Docker)
+    import os
+    if os.getenv('FLASK_ENV') == 'production':
+        # Use production server with unsafe Werkzeug for Docker
+        socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    else:
+        # Use development server
+        socketio.run(app, debug=True, host='0.0.0.0', port=5000)

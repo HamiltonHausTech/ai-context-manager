@@ -13,6 +13,10 @@ filepath = "demo_feedback.json"
 type = "json"  # Use JSON for demos to avoid vector DB dependencies
 filepath = "demo_memory.json"
 
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
 # Optional: Vector database configuration (uncomment to enable)
 # [memory_store]
 # type = "vector"

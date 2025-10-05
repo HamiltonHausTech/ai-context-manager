@@ -51,7 +51,14 @@ RUN echo "# AI Context Manager Configuration" > ./config.toml && \
     echo "" >> ./config.toml && \
     echo "[memory_store]" >> ./config.toml && \
     echo "type = \"json\"" >> ./config.toml && \
-    echo "filepath = \"memory.json\"" >> ./config.toml
+    echo "filepath = \"memory.json\"" >> ./config.toml && \
+    echo "" >> ./config.toml && \
+    echo "[logging]" >> ./config.toml && \
+    echo "level = \"INFO\"" >> ./config.toml && \
+    echo "format = \"%(asctime)s - %(name)s - %(levelname)s - %(message)s\"" >> ./config.toml
+
+# Copy demo config file
+COPY demo_apps/demo-config.toml ./demo_apps/demo-config.toml
 
 # Create default environment file
 RUN echo "# AI Context Manager Environment" > ./.env && \
