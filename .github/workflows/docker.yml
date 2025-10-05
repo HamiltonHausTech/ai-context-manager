@@ -149,43 +149,34 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v5
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Extract metadata for security scan
       id: meta-scan
       uses: docker/metadata-action@v5
       with:
         images: |
-          ai-context-manager
+          ${{ secrets.DOCKER_USERNAME }}/ai-context-manager
         tags: |
-          type=raw,value=security-scan
+          type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Build Docker image for security scan
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        file: ./demo_apps/Dockerfile
-        push: false
-        tags: ${{ steps.meta-scan.outputs.tags }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        build-args: |
-          BUILDKIT_INLINE_CACHE=1
-        outputs: type=docker
-
-    - name: Verify Docker image was built
+    - name: Pull Docker image for security scan
       run: |
-        echo "Checking if Docker image exists..."
+        echo "Pulling Docker image for security scan..."
+        docker pull ${{ secrets.DOCKER_USERNAME }}/ai-context-manager:latest
+        echo "Verifying image was pulled:"
         docker images | grep ai-context-manager || echo "No ai-context-manager images found"
         echo "All Docker images:"
         docker images
-        echo "Image build verification complete"
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'ai-context-manager:security-scan'
+        image-ref: '${{ secrets.DOCKER_USERNAME }}/ai-context-manager:latest'
         format: 'sarif'
         output: 'trivy-results.sarif'
         ignore-unfixed: true
