@@ -73,12 +73,29 @@ jobs:
         name: dist-3.11
         path: dist/
 
+    - name: Debug package files
+      run: |
+        echo "=== Package Files Debug ==="
+        ls -la dist/
+        echo "=== Package Contents ==="
+        for file in dist/*; do
+          echo "File: $file"
+          echo "Size: $(ls -lh "$file" | awk '{print $5}')"
+          if [[ "$file" == *.whl ]]; then
+            echo "Wheel info:"
+            unzip -l "$file" | head -10
+          fi
+        done
+        echo "=== Twine Check ==="
+        twine check dist/*
+
     - name: Publish to Test PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
       run: |
-        twine upload --repository testpypi dist/*
+        echo "Uploading to Test PyPI with verbose output..."
+        twine upload --repository testpypi --verbose dist/*
 
     - name: Verify Test PyPI installation
       run: |
