@@ -32,6 +32,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
+requires-python = ">=3.9"
 
 dependencies = [
     "openai",
@@ -83,8 +84,6 @@ Repository = "https://github.com/ai-context-manager/ai-context-manager"
 Documentation = "https://docs.ai-context-manager.com"
 Issues = "https://github.com/ai-context-manager/ai-context-manager/issues"
 Changelog = "https://github.com/ai-context-manager/ai-context-manager/blob/main/CHANGELOG.md"
-
-requires-python = ">=3.9"
 
 [tool.setuptools.packages.find]
 where = ["."]
