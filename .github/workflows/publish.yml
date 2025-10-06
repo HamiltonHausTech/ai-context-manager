@@ -99,7 +99,7 @@ jobs:
 
     - name: Verify Test PyPI installation
       run: |
-        pip install --index-url https://test.pypi.org/simple/ ai-context-manager
+        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ ai-context-manager
         python -c "import ai_context_manager; print('Test PyPI package works!')"
 
   # Job to publish to PyPI (only on release)
