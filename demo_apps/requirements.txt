@@ -2,7 +2,7 @@
 
 # Web Demo Requirements
 Flask==2.3.3
-Flask-SocketIO==5.3.6
+Flask-SocketIO==5.5.1
 
 # Research Assistant Requirements
 asyncio
