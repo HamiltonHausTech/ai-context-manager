@@ -142,6 +142,9 @@ jobs:
     needs: [build-and-publish]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    permissions:
+      contents: write
+      pull-requests: write
     
     steps:
     - name: Checkout code
