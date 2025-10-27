@@ -68,7 +68,7 @@ jobs:
         pip install twine
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: dist-3.11
         path: dist/
@@ -120,7 +120,7 @@ jobs:
         pip install twine
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: dist-3.11
         path: dist/
@@ -153,7 +153,7 @@ jobs:
         fetch-depth: 0
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v6
       with:
         name: dist-3.11
         path: dist/
