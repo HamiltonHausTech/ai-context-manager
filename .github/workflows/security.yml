@@ -71,7 +71,7 @@ jobs:
         pip list | grep -E "(urllib3|requests|cryptography|pyyaml)" || echo "No common vulnerable packages found"
 
     - name: Upload security reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       if: always()
       with:
         name: security-reports-${{ github.run_number }}
