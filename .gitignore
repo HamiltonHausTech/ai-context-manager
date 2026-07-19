@@ -142,6 +142,8 @@ config.toml
 
 # Data stores and caches
 *.json
+!evaluations/
+!evaluations/*.json
 *.db
 *.sqlite
 *.sqlite3

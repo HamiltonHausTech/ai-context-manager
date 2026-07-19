@@ -1,0 +1,33 @@
+{
+  "name": "agent-memory-retrieval-v1",
+  "cases": [
+    {
+      "id": "bank-categorization",
+      "query": "How should recurring bank transactions be categorized?",
+      "relevant_ids": ["fact-bank-rules", "episode-bank-review"],
+      "excluded_ids": ["preference-writing-style", "episode-weather"],
+      "relevance": {
+        "fact-bank-rules": 2.0,
+        "episode-bank-review": 1.0
+      }
+    },
+    {
+      "id": "user-formatting",
+      "query": "How does the user prefer reports to be formatted?",
+      "relevant_ids": ["preference-writing-style"],
+      "excluded_ids": ["episode-weather", "fact-bank-rules"],
+      "relevance": {
+        "preference-writing-style": 2.0
+      }
+    },
+    {
+      "id": "active-objective",
+      "query": "What objective should the agent work on next?",
+      "relevant_ids": ["goal-modernize-memory"],
+      "excluded_ids": ["episode-weather", "superseded-old-goal"],
+      "relevance": {
+        "goal-modernize-memory": 2.0
+      }
+    }
+  ]
+}
