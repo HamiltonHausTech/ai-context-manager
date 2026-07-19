@@ -20,7 +20,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
@@ -45,7 +45,7 @@ jobs:
         python -c "import ai_context_manager; print('Package imports successfully')"
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: dist-${{ matrix.python-version }}
         path: dist/
@@ -57,22 +57,49 @@ jobs:
     if: github.event.inputs.test_pypi == 'true' || github.event_name == 'workflow_dispatch'
     
     steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+
+    - name: Install twine
+      run: |
+        python -m pip install --upgrade pip
+        pip install twine
+
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v7
       with:
         name: dist-3.11
         path: dist/
+
+    - name: Debug package files
+      run: |
+        echo "=== Package Files Debug ==="
+        ls -la dist/
+        echo "=== Package Contents ==="
+        for file in dist/*; do
+          echo "File: $file"
+          echo "Size: $(ls -lh "$file" | awk '{print $5}')"
+          if [[ "$file" == *.whl ]]; then
+            echo "Wheel info:"
+            unzip -l "$file" | head -10
+          fi
+        done
+        echo "=== Twine Check ==="
+        twine check dist/*
 
     - name: Publish to Test PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
       run: |
-        twine upload --repository testpypi dist/*
+        echo "Uploading to Test PyPI with verbose output..."
+        twine upload --repository testpypi --verbose dist/*
 
     - name: Verify Test PyPI installation
       run: |
-        pip install --index-url https://test.pypi.org/simple/ ai-context-manager
+        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ ai-context-manager
         python -c "import ai_context_manager; print('Test PyPI package works!')"
 
   # Job to publish to PyPI (only on release)
@@ -82,8 +109,18 @@ jobs:
     if: github.event_name == 'release' && github.event.inputs.test_pypi != 'true'
     
     steps:
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+
+    - name: Install twine
+      run: |
+        python -m pip install --upgrade pip
+        pip install twine
+
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v7
       with:
         name: dist-3.11
         path: dist/
@@ -105,15 +142,18 @@ jobs:
     needs: [build-and-publish]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    permissions:
+      contents: write
+      pull-requests: write
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
     - name: Download build artifacts
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v7
       with:
         name: dist-3.11
         path: dist/
