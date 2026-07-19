@@ -18,13 +18,18 @@ class SemanticContextManager(ContextManager):
     Falls back to traditional tag-based retrieval when vector database is not available.
     """
     
-    def __init__(self, feedback=None, memory_store=None, config=None, summarizer=None):
-        super().__init__(feedback, memory_store, config, summarizer)
+    def __init__(
+        self, feedback=None, memory_store=None, config=None, summarizer=None,
+        relevance_scorer=None,
+    ):
+        super().__init__(
+            feedback, memory_store, config, summarizer, relevance_scorer
+        )
         
         # Initialize semantic retriever if vector store is available
         self.semantic_retriever = None
-        if isinstance(memory_store, VectorMemoryStore):
-            self.semantic_retriever = SemanticContextRetriever(memory_store)
+        if memory_store is not None and hasattr(memory_store, "search_similar"):
+            self.semantic_retriever = SemanticContextRetriever(memory_store, feedback)
             logger.info("Semantic context retrieval enabled")
         else:
             logger.info("Using traditional tag-based context retrieval")
@@ -60,6 +65,7 @@ class SemanticContextManager(ContextManager):
             # Fall back to traditional tag-based retrieval
             logger.debug("Falling back to traditional context retrieval")
             return self.get_context(
+                query=query,
                 include_tags=include_tags,
                 component_types=include_types,
                 token_budget=token_budget,
@@ -91,13 +97,23 @@ class SemanticContextManager(ContextManager):
         Search for similar components using semantic similarity.
         Returns components with similarity scores.
         """
-        if isinstance(self.memory_store, VectorMemoryStore):
-            return self.memory_store.search_similar(
+        if self.memory_store is not None and hasattr(self.memory_store, "search_similar"):
+            results = self.memory_store.search_similar(
                 query=query,
                 n_results=n_results,
                 include_types=include_types,
                 include_tags=include_tags
             )
+            if self.feedback:
+                from .hybrid import rank_hybrid
+
+                for result in results:
+                    result["feedback_score"] = (
+                        self.feedback.get_average_score(result["id"]) * 0.7
+                        + self.feedback.get_average_score_by_type(result["type"]) * 0.3
+                    )
+                results = rank_hybrid(results)
+            return results
         else:
             # Fall back to traditional search
             logger.warning("Semantic search not available, using traditional search")
@@ -120,7 +136,25 @@ class SemanticContextManager(ContextManager):
                     "component": comp
                 })
             
-            return results
+        return results
+
+    def get_semantic_status(self) -> Dict[str, Any]:
+        """Report whether semantic retrieval is active or explicitly degraded."""
+        if self.memory_store is None or not hasattr(self.memory_store, "search_similar"):
+            return {
+                "available": False,
+                "degraded": True,
+                "reason": "No semantic memory store is configured",
+                "provider": None,
+            }
+        if hasattr(self.memory_store, "get_embedding_status"):
+            return self.memory_store.get_embedding_status()
+        return {
+            "available": True,
+            "degraded": False,
+            "reason": None,
+            "provider": None,
+        }
     
     def get_context_with_semantic_fallback(self, query: Optional[str] = None,
                                          include_tags: Optional[List[str]] = None,
@@ -153,6 +187,7 @@ class SemanticContextManager(ContextManager):
             # Use traditional retrieval
             logger.debug("Using traditional context retrieval")
             return self.get_context(
+                query=query,
                 include_tags=include_tags,
                 component_types=component_types,
                 token_budget=token_budget,
@@ -168,9 +203,10 @@ class SemanticContextManager(ContextManager):
         }
         
         # Add vector store specific stats
-        if isinstance(self.memory_store, VectorMemoryStore):
+        if self.memory_store is not None and hasattr(self.memory_store, "get_stats"):
             vector_stats = self.memory_store.get_stats()
             stats.update(vector_stats)
+        stats["semantic_status"] = self.get_semantic_status()
         
         # Add component type breakdown
         component_types = {}

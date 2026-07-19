@@ -1,8 +1,9 @@
 from ai_context_manager.components import ContextComponent
+from ai_context_manager.memory import MemoryKind
 
 class LongTermMemoryComponent(ContextComponent):
     def __init__(self, id: str, content: str, source: str, timestamp: str, score=0.5, tags=None):
-        super().__init__(id, tags or ["memory", "longterm"])
+        super().__init__(id, tags or ["memory", "longterm"], memory_kind=MemoryKind.DURABLE_FACT.value)
         self.content = content
         self.source = source
         self.timestamp = timestamp

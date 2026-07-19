@@ -1,0 +1,17 @@
+[summarizer]
+type = "naive"
+
+[feedback_store]
+type = "json"
+filepath = "feedback.json"
+
+[memory_store]
+type = "json"
+filepath = "memory.json"
+# For transactional local storage, use:
+# type = "sqlite"
+# db_path = "memory.db"
+
+[logging]
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

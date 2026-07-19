@@ -1,9 +1,10 @@
 from ai_context_manager.components import ContextComponent
 from typing import Dict, Any
+from ai_context_manager.memory import MemoryKind
 
 class UserProfileComponent(ContextComponent):
     def __init__(self, id: str, name: str, preferences: Dict[str, Any], score=1.0, tags=None):
-        super().__init__(id, tags or ["user", "profile"])
+        super().__init__(id, tags or ["user", "profile"], memory_kind=MemoryKind.PREFERENCE.value)
         self.name = name
         self.preferences = preferences
         self._score = score

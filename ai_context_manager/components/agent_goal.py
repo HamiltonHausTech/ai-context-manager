@@ -5,6 +5,7 @@ Agent Goal Component - Tracks long-term agent objectives and progress
 from ai_context_manager.components import ContextComponent
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from ai_context_manager.memory import MemoryKind
 
 class AgentGoalComponent(ContextComponent):
     """Represents a long-term goal or objective for an AI agent."""
@@ -12,16 +13,18 @@ class AgentGoalComponent(ContextComponent):
     def __init__(self, id: str, goal_description: str, agent_id: str, 
                  priority: float = 1.0, status: str = "active",
                  progress: float = 0.0, deadline: Optional[str] = None,
-                 tags: Optional[List[str]] = None):
-        super().__init__(id, tags or ["agent", "goal"])
+                 tags: Optional[List[str]] = None,
+                 created_at: Optional[str] = None,
+                 last_updated: Optional[str] = None):
+        super().__init__(id, tags or ["agent", "goal"], memory_kind=MemoryKind.GOAL.value)
         self.goal_description = goal_description
         self.agent_id = agent_id
         self.priority = priority
         self.status = status  # active, completed, paused, failed
         self.progress = progress  # 0.0 to 1.0
         self.deadline = deadline
-        self.created_at = datetime.utcnow().isoformat()
-        self.last_updated = datetime.utcnow().isoformat()
+        self.created_at = created_at or datetime.utcnow().isoformat()
+        self.last_updated = last_updated or self.created_at
 
     def load_content(self) -> str:
         """Generate content describing the agent goal."""
@@ -92,14 +95,15 @@ class AgentSessionComponent(ContextComponent):
     
     def __init__(self, id: str, agent_id: str, session_type: str,
                  summary: str, duration_minutes: float,
-                 success: bool = True, tags: Optional[List[str]] = None):
-        super().__init__(id, tags or ["agent", "session"])
+                 success: bool = True, tags: Optional[List[str]] = None,
+                 timestamp: Optional[str] = None):
+        super().__init__(id, tags or ["agent", "session"], memory_kind=MemoryKind.EPISODE.value)
         self.agent_id = agent_id
         self.session_type = session_type
         self.summary = summary
         self.duration_minutes = duration_minutes
         self.success = success
-        self.timestamp = datetime.utcnow().isoformat()
+        self.timestamp = timestamp or datetime.utcnow().isoformat()
 
     def load_content(self) -> str:
         """Generate content describing the agent session."""

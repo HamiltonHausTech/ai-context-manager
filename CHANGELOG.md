@@ -66,6 +66,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Typed, explainable retrieval requests, results, items, and decisions.
+- Query-aware ranking with relevance, importance, and recency factors.
+- Optional required concepts, relevance thresholds, redundancy suppression,
+  component limits, and pluggable application relevance scoring.
+- Query-aware compression and detailed inclusion/exclusion traces.
+- Versioned memory lifecycle metadata, provenance, contradictions,
+  consolidation, and derived memories.
+- Provider-independent embeddings, stable embedding metadata, hybrid ranking,
+  and selective re-embedding.
+- Transactional SQLite memory storage and typed storage failures.
+- Repeatable retrieval evaluation with relevance, exclusion, stability,
+  downstream utility, and token-efficiency metrics.
+- A persistent Bourbon Research Desk CLI used as a realistic validation
+  harness for discovery, extraction, provenance, and context retrieval.
+- OpenAI Responses API web discovery, optional Brave and Wikipedia providers,
+  PDF ingestion, and automatic retry of failed claim extraction.
+
+### Changed
+
+- Reframed context assembly around the smallest useful task context rather than
+  context-window compression alone.
+- Made tokenizer loading lazy and offline-safe.
+- Standardized component serialization and backend behavior.
+- Replaced placeholder PostgreSQL vectors with injected embedding providers.
+- Updated local Ollama defaults to `http://localhost:11434` with
+  `qwen2.5:7b-instruct` for local summarization and compression.
+- Kept legacy retrieval behavior when no query is supplied while allowing
+  applications to tune query-aware precision and recall.
+
+### Fixed
+
+- Lossy component persistence and inconsistent duplicate handling.
+- Silent storage and semantic-retrieval degradation.
+- Token-budget overflow after summarization.
+- Research-source failure accounting, named confidence normalization, PDF
+  extraction, and retry of saved sources without claims.
+
 ### Planned
 - **Redis support** - Session storage and caching
 - **GraphQL API** - Modern API interface

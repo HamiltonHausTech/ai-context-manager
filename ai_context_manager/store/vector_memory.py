@@ -6,7 +6,6 @@ import json
 import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-import uuid
 
 try:
     import chromadb
@@ -15,21 +14,18 @@ try:
 except ImportError:
     CHROMADB_AVAILABLE = False
 
-try:
-    import sys
-    # Check Python version compatibility for sentence_transformers
-    if sys.version_info >= (3, 10):
-        from sentence_transformers import SentenceTransformer
-        SENTENCE_TRANSFORMERS_AVAILABLE = True
-    else:
-        # Python 3.9 has compatibility issues with newer sentence_transformers
-        SENTENCE_TRANSFORMERS_AVAILABLE = False
-        SentenceTransformer = None
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    SentenceTransformer = None
-
 from .base import MemoryStore
+from .errors import StorageReadError, StorageWriteError
+from ai_context_manager.embeddings import (
+    EmbeddingProvider,
+    SentenceTransformerEmbeddingProvider,
+    create_embedding_text,
+    embedding_metadata,
+    needs_reembedding,
+)
+from ai_context_manager.hybrid import HybridWeights, rank_hybrid
+from ai_context_manager.tokenization import estimate_tokens, truncate_to_token_budget
+from ai_context_manager.memory import memory_record_is_active
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +35,10 @@ class VectorMemoryStore(MemoryStore):
     Provides much more efficient retrieval for agent context management.
     """
     
-    def __init__(self, collection_name: str = "agent_memory", 
+    def __init__(self, collection_name: str = "agent_memory",
                  persist_directory: str = "./chroma_db",
-                 embedding_model: str = "all-MiniLM-L6-v2"):
+                 embedding_model: str = "all-MiniLM-L6-v2",
+                 embedding_provider: Optional[EmbeddingProvider] = None):
         """
         Initialize vector memory store.
         
@@ -53,17 +50,13 @@ class VectorMemoryStore(MemoryStore):
         if not CHROMADB_AVAILABLE:
             raise ImportError("ChromaDB not available. Install with: pip install chromadb")
         
-        if not SENTENCE_TRANSFORMERS_AVAILABLE:
-            import sys
-            if sys.version_info < (3, 10):
-                raise ImportError("SentenceTransformers requires Python 3.10+ for compatibility. Current version: {}.{}.{}".format(
-                    sys.version_info.major, sys.version_info.minor, sys.version_info.micro))
-            else:
-                raise ImportError("SentenceTransformers not available. Install with: pip install sentence-transformers")
-        
         self.collection_name = collection_name
         self.persist_directory = persist_directory
         self.embedding_model_name = embedding_model
+        self.embedding_provider = embedding_provider or SentenceTransformerEmbeddingProvider(
+            embedding_model
+        )
+        self.last_embedding_error = None
         
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(
@@ -74,14 +67,13 @@ class VectorMemoryStore(MemoryStore):
             )
         )
         
-        # Initialize embedding model
-        logger.info(f"Loading embedding model: {embedding_model}")
-        self.embedding_model = SentenceTransformer(embedding_model)
-        
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"hnsw:space": "cosine"}  # Use cosine similarity
+            metadata={
+                "hnsw:space": "cosine",
+                "embedding_identifier": self.embedding_provider.info.identifier,
+            }
         )
         
         logger.info(f"Vector memory store initialized with {self.collection.count()} items")
@@ -89,34 +81,17 @@ class VectorMemoryStore(MemoryStore):
     def _generate_embedding(self, text: str) -> List[float]:
         """Generate embedding for text."""
         try:
-            embedding = self.embedding_model.encode(text)
-            return embedding.tolist()
+            embedding = self.embedding_provider.embed_checked(text)
+            self.last_embedding_error = None
+            return embedding
         except Exception as e:
+            self.last_embedding_error = str(e)
             logger.error(f"Failed to generate embedding: {e}")
-            # Return zero vector as fallback
-            return [0.0] * 384  # Default dimension for all-MiniLM-L6-v2
+            raise
     
     def _create_document_text(self, component: Dict[str, Any]) -> str:
         """Create searchable text from component data."""
-        content = component.get("content", "")
-        component_type = component.get("type", "Unknown")
-        tags = component.get("tags", [])
-        
-        # Create rich searchable text
-        searchable_text = f"{content}\n"
-        searchable_text += f"Type: {component_type}\n"
-        if tags:
-            searchable_text += f"Tags: {', '.join(tags)}\n"
-        
-        # Add metadata for better search
-        if component_type == "AgentGoalComponent":
-            searchable_text += f"Goal: {content}\n"
-        elif component_type == "TaskSummaryComponent":
-            searchable_text += f"Task: {component.get('task_name', 'Unknown')}\n"
-        elif component_type == "LongTermMemoryComponent":
-            searchable_text += f"Learning: {content}\n"
-        
-        return searchable_text
+        return create_embedding_text(component)
     
     def load_all(self) -> List[Dict]:
         """Load all components from vector store."""
@@ -132,7 +107,10 @@ class VectorMemoryStore(MemoryStore):
                         "content": metadata.get("content", ""),
                         "tags": json.loads(metadata.get("tags", "[]")),
                         "timestamp": metadata.get("timestamp", ""),
-                        "score": metadata.get("score", 1.0)
+                        "score": metadata.get("score", 1.0),
+                        "schema_version": metadata.get("schema_version"),
+                        "component_data": metadata.get("component_data"),
+                        "memory": json.loads(metadata.get("memory", "null")),
                     }
                     components.append(component)
             
@@ -141,7 +119,7 @@ class VectorMemoryStore(MemoryStore):
             
         except Exception as e:
             logger.error(f"Failed to load components from vector store: {e}")
-            return []
+            raise StorageReadError("Failed to load components from vector store") from e
     
     def save_component(self, component: Dict) -> None:
         """Save component to vector store with embedding."""
@@ -165,8 +143,12 @@ class VectorMemoryStore(MemoryStore):
                 "tags": json.dumps(tags),
                 "timestamp": component.get("timestamp", datetime.utcnow().isoformat()),
                 "score": component.get("score", 1.0),
+                "schema_version": component.get("schema_version", 1),
+                "component_data": component.get("component_data", "{}"),
+                "memory": json.dumps(component.get("memory")),
                 "created_at": datetime.utcnow().isoformat()
             }
+            metadata.update(embedding_metadata(self.embedding_provider, searchable_text))
             
             # Save to vector store
             self.collection.upsert(
@@ -180,6 +162,7 @@ class VectorMemoryStore(MemoryStore):
             
         except Exception as e:
             logger.error(f"Failed to save component {component.get('id', 'unknown')} to vector store: {e}")
+            raise StorageWriteError("Failed to save component to vector store") from e
     
     def delete_component(self, component_id: str) -> None:
         """Delete component from vector store."""
@@ -188,6 +171,7 @@ class VectorMemoryStore(MemoryStore):
             logger.debug(f"Deleted component {component_id} from vector store")
         except Exception as e:
             logger.error(f"Failed to delete component {component_id} from vector store: {e}")
+            raise StorageWriteError("Failed to delete component from vector store") from e
     
     def get_component(self, component_id: str) -> Optional[Dict]:
         """Get specific component by ID."""
@@ -205,18 +189,23 @@ class VectorMemoryStore(MemoryStore):
                     "content": metadata.get("content", ""),
                     "tags": json.loads(metadata.get("tags", "[]")),
                     "timestamp": metadata.get("timestamp", ""),
-                    "score": metadata.get("score", 1.0)
+                    "score": metadata.get("score", 1.0),
+                    "schema_version": metadata.get("schema_version"),
+                    "component_data": metadata.get("component_data"),
+                    "memory": json.loads(metadata.get("memory", "null")),
                 }
             
             return None
             
         except Exception as e:
             logger.error(f"Failed to get component {component_id} from vector store: {e}")
-            return None
+            raise StorageReadError("Failed to get component from vector store") from e
     
-    def search_similar(self, query: str, n_results: int = 10, 
+    def search_similar(self, query: str, n_results: int = 10,
                       include_types: Optional[List[str]] = None,
-                      include_tags: Optional[List[str]] = None) -> List[Dict]:
+                      include_tags: Optional[List[str]] = None,
+                      hybrid_weights: Optional[HybridWeights] = None,
+                      include_inactive: bool = False) -> List[Dict]:
         """
         Search for similar components using semantic similarity.
         
@@ -237,13 +226,12 @@ class VectorMemoryStore(MemoryStore):
             where_clause = {}
             if include_types:
                 where_clause["type"] = {"$in": include_types}
-            if include_tags:
-                where_clause["tags"] = {"$in": include_tags}
-            
+            fetch_count = max(n_results, self.collection.count())
+
             # Search vector store
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=n_results,
+                n_results=fetch_count,
                 where=where_clause if where_clause else None,
                 include=["metadatas", "distances", "documents"]
             )
@@ -266,14 +254,54 @@ class VectorMemoryStore(MemoryStore):
                         "similarity_score": 1.0 - distance,  # Convert distance to similarity
                         "distance": distance
                     }
-                    similar_components.append(component)
+                    component["memory"] = json.loads(metadata.get("memory", "null"))
+                    tags_match = not include_tags or all(
+                        tag in component["tags"] for tag in include_tags
+                    )
+                    if tags_match and (
+                        include_inactive or memory_record_is_active(component)
+                    ):
+                        similar_components.append(component)
             
             logger.debug(f"Found {len(similar_components)} similar components for query: {query[:50]}...")
-            return similar_components
+            return rank_hybrid(similar_components, hybrid_weights)[:n_results]
             
         except Exception as e:
             logger.error(f"Failed to search vector store: {e}")
-            return []
+            raise
+
+    def get_embedding_status(self) -> Dict[str, Any]:
+        return {
+            "available": self.last_embedding_error is None,
+            "degraded": self.last_embedding_error is not None,
+            "reason": self.last_embedding_error,
+            "provider": self.embedding_provider.info.to_dict(),
+        }
+
+    def reembed_all(self, stale_only: bool = True) -> int:
+        """Regenerate vectors after provider, model, version, or content changes."""
+        try:
+            results = self.collection.get(include=["metadatas", "documents"])
+            updated = 0
+            for component_id, metadata, document in zip(
+                results["ids"], results["metadatas"], results["documents"]
+            ):
+                metadata = dict(metadata or {})
+                if stale_only and not needs_reembedding(
+                    metadata, self.embedding_provider, document
+                ):
+                    continue
+                metadata.update(embedding_metadata(self.embedding_provider, document))
+                self.collection.upsert(
+                    ids=[component_id],
+                    embeddings=[self._generate_embedding(document)],
+                    metadatas=[metadata],
+                    documents=[document],
+                )
+                updated += 1
+            return updated
+        except Exception as exc:
+            raise StorageWriteError("Failed to re-embed vector store") from exc
     
     def get_stats(self) -> Dict[str, Any]:
         """Get vector store statistics."""
@@ -283,6 +311,8 @@ class VectorMemoryStore(MemoryStore):
                 "total_components": count,
                 "collection_name": self.collection_name,
                 "embedding_model": self.embedding_model_name,
+                "embedding_provider": self.embedding_provider.info.to_dict(),
+                "embedding_degraded": self.last_embedding_error is not None,
                 "persist_directory": self.persist_directory
             }
         except Exception as e:
@@ -295,7 +325,10 @@ class VectorMemoryStore(MemoryStore):
             self.client.delete_collection(self.collection_name)
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"hnsw:space": "cosine"}
+                metadata={
+                    "hnsw:space": "cosine",
+                    "embedding_identifier": self.embedding_provider.info.identifier,
+                }
             )
             logger.info("Cleared all data from vector store")
         except Exception as e:
@@ -307,8 +340,9 @@ class SemanticContextRetriever:
     Enhanced context retriever using semantic similarity search.
     """
     
-    def __init__(self, vector_store: VectorMemoryStore):
+    def __init__(self, vector_store: VectorMemoryStore, feedback=None):
         self.vector_store = vector_store
+        self.feedback = feedback
     
     def get_semantic_context(self, query: str, token_budget: int = 2000,
                            max_components: int = 20,
@@ -334,6 +368,13 @@ class SemanticContextRetriever:
             include_types=include_types,
             include_tags=include_tags
         )
+        if self.feedback:
+            for component in similar_components:
+                component["feedback_score"] = (
+                    self.feedback.get_average_score(component["id"]) * 0.7
+                    + self.feedback.get_average_score_by_type(component["type"]) * 0.3
+                )
+            similar_components = rank_hybrid(similar_components)
         
         # Build context with token budget management
         context_parts = []
@@ -343,8 +384,7 @@ class SemanticContextRetriever:
             content = component["content"]
             similarity_score = component.get("similarity_score", 0.0)
             
-            # Estimate tokens (rough approximation)
-            estimated_tokens = len(content.split()) * 1.3
+            estimated_tokens = estimate_tokens(content)
             
             if used_tokens + estimated_tokens <= token_budget:
                 context_parts.append(f"[{component['id']}] {component['type']} (similarity: {similarity_score:.2f})\n{content}")
@@ -353,7 +393,7 @@ class SemanticContextRetriever:
                 # Try to fit a summary if we're close to budget
                 remaining_tokens = token_budget - used_tokens
                 if remaining_tokens > 50:  # Minimum viable summary
-                    summary = content[:remaining_tokens * 4]  # Rough character estimation
+                    summary = truncate_to_token_budget(content, int(remaining_tokens))
                     context_parts.append(f"[{component['id']}] {component['type']} (similarity: {similarity_score:.2f}) [SUMMARY]\n{summary}...")
                 break
         

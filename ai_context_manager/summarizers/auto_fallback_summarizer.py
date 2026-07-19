@@ -14,7 +14,7 @@ class AutoFallbackSummarizer(Summarizer):
     Tests Ollama connectivity on first use and caches the result.
     """
     
-    def __init__(self, model="mistral", host="http://localhost:11434", timeout=10, 
+    def __init__(self, model="qwen2.5:7b-instruct", host="http://localhost:11434", timeout=10,
                  health_check_timeout=5, cache_health_result=True):
         self.model = model
         self.host = host

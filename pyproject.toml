@@ -36,6 +36,8 @@ requires-python = ">=3.9"
 
 dependencies = [
     "openai",
+    "python-dotenv>=1.0.0",
+    "pypdf>=5.0.0",
     "requests",
     "jinja2",
     "tiktoken",
@@ -50,11 +52,10 @@ vector = [
 ]
 postgres = [
     "psycopg2-binary>=2.9.0",
-    "numpy>=1.21.0"
+    "sentence-transformers>=2.2.0; python_version >= '3.10'"
 ]
 production = [
     "psycopg2-binary>=2.9.0",
-    "numpy>=1.21.0",
     "sentence-transformers>=2.2.0; python_version >= '3.10'"
 ]
 cli = [
@@ -77,6 +78,7 @@ all = [
 
 [project.scripts]
 ai-context = "ai_context_manager.cli:main"
+bourbon-research = "bourbon_research.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ai-context-manager/ai-context-manager"
@@ -87,7 +89,7 @@ Changelog = "https://github.com/ai-context-manager/ai-context-manager/blob/main/
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ai_context_manager*"]
+include = ["ai_context_manager*", "bourbon_research*"]
 
 [tool.setuptools.package-data]
 "ai_context_manager" = ["py.typed"]
@@ -129,6 +131,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "chroma_integration: requires the optional ChromaDB dependency",
+    "postgres_integration: requires a live PostgreSQL server with pgvector",
+]
 
 # Coverage configuration
 [tool.coverage.run]

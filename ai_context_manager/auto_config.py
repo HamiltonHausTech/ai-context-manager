@@ -44,14 +44,14 @@ class AutoConfig:
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         if self._test_ollama_connection(ollama_host):
             config["summarizer"]["type"] = "ollama"
-            config["summarizer"]["model"] = os.getenv("OLLAMA_MODEL", "mistral")
+            config["summarizer"]["model"] = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
             config["summarizer"]["host"] = ollama_host
             logger.info(f"Detected Ollama at {ollama_host} - using Ollama summarizer")
             return
         
         # Default to auto-fallback
         config["summarizer"]["type"] = "auto_fallback"
-        config["summarizer"]["model"] = "mistral"
+        config["summarizer"]["model"] = "qwen2.5:7b-instruct"
         logger.info("Using auto-fallback summarizer")
     
     def _detect_storage(self, config: Dict[str, Any]):

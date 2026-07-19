@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from ai_context_manager.context_manager import ContextManager
 from ai_context_manager.feedback import Feedback
 from ai_context_manager.utils import load_summarizer
@@ -31,7 +32,11 @@ def test_feedback_summary(feedback: Feedback):
 
 def run_test_from_config():
     try:
-        config_obj = Config("config.toml")
+        project_root = Path(__file__).resolve().parent
+        config_path = project_root / "config.toml"
+        if not config_path.exists():
+            config_path = project_root / "tests" / "test-config.toml"
+        config_obj = Config(str(config_path))
         config = config_obj.data
         feedback_store, memory_store = load_stores_from_config(config)
         feedback = Feedback(store=feedback_store)

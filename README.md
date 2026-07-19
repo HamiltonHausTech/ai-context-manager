@@ -51,12 +51,22 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # Optional Ollama configuration
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=mistral
+OLLAMA_MODEL=qwen2.5:7b-instruct
 ```
+
+The `bourbon-research` CLI automatically loads the nearest `.env` file. Values
+already present in the process environment take precedence, and `.env` is ignored
+by Git.
 
 ### 3. Configure the System
 
-Edit `config.toml` based on your setup:
+Create a local configuration from the checked-in, offline-safe example:
+
+```bash
+cp config.example.toml config.toml
+```
+
+Then edit `config.toml` based on your setup:
 
 **For production agents (PostgreSQL + pgvector):**
 ```toml
@@ -208,9 +218,93 @@ print(context)
 ### Storage
 
 - **JSON**: File-based storage for simple deployments
-- **SQLite**: Database storage for production use
+- **SQLite**: Transactional local storage for feedback and component memory
 - **Vector**: ChromaDB-based semantic similarity search (development)
 - **PostgreSQL + pgvector**: Enterprise-grade vector database (production)
+
+### Explainable Retrieval
+
+`get_context()` remains the convenient string/metadata API. Applications that
+need selection diagnostics can use the typed retrieval API:
+
+```python
+from ai_context_manager import RetrievalRequest
+
+result = ctx.retrieve(RetrievalRequest(
+    query="Complete the current deployment task safely",
+    required_terms=["deployment"],
+    include_tags=["task", "memory"],
+    token_budget=500,
+    summarize_if_needed=True,
+    min_relevance=0.10,
+    deduplicate=True,
+))
+
+print(result.context)
+for decision in result.decisions:
+    print(decision.component_id, decision.included, decision.reason)
+```
+
+Retrieval runs as separate candidate selection, query-aware ranking, redundancy
+control, and budget-packing stages. Query-aware decisions report relevance,
+importance, and recency factors. `required_terms` is an optional precision guard;
+omit it when conceptual matches should be recovered by an injected semantic
+`relevance_scorer`. Calls without `query` preserve legacy static-score ordering.
+
+### Embeddings and Hybrid Retrieval
+
+Vector backends use the same provider-independent embedding contract. The
+default provider lazily loads `all-MiniLM-L6-v2` through sentence-transformers;
+applications can inject another `EmbeddingProvider` for hosted or local models.
+
+Every stored vector records its provider, model, package/revision version,
+dimension, and a SHA-256 hash of the embedded text. Use `reembed_all()` after a
+provider or model change; `stale_only=True` updates only incompatible records.
+
+Semantic results expose both normalized `similarity_score` and `hybrid_score`.
+Hybrid ranking combines semantic similarity, component importance, recency, and
+feedback using configurable `HybridWeights`. Both scores use a `[0, 1]` scale
+across ChromaDB and PostgreSQL/pgvector.
+
+Call `get_semantic_status()` on `SemanticContextManager` to detect missing or
+failed embedding providers. Embedding failures are explicit and never replaced
+with zero vectors.
+
+### Memory Consolidation
+
+Every component is categorized as an episode, durable fact, preference, goal,
+derived summary, or generic memory. Lifecycle metadata records provenance,
+supersession, contradictions, expiry, and confidence.
+
+`ConsolidationEngine` can derive or merge memories, expire temporary knowledge,
+and record contradictions without discarding either claim. Contradictions are
+only resolved through an explicit winner/superseded decision. Normal retrieval
+excludes superseded and expired memories while explaining each exclusion;
+`include_inactive=True` remains available for audits.
+
+See `examples/memory_consolidation_example.py` for a completely offline flow
+that consolidates task episodes into a durable rule, resolves a changed user
+preference, inspects retrieval decisions, and evaluates the result.
+
+### Retrieval Evaluation
+
+`RetrievalEvaluator` measures precision, recall, reciprocal rank, NDCG, token
+efficiency, expected-exclusion accuracy, context stability, and downstream task
+utility. A custom utility scorer can run an application-specific task check;
+without one, graded NDCG is used as the utility proxy.
+
+The checked-in `evaluations/agent_memory_retrieval.json` fixture provides an
+initial repeatable dataset with relevant memories and distractors.
+
+### Storage Concurrency
+
+- JSON uses atomic file replacement, preventing partial files after interrupted
+  writes. It does not coordinate simultaneous writers; use one writer per file.
+- SQLite serializes transactional writes. A `SQLiteMemoryStore` instance owns a
+  connection and should not be shared across threads; create one per thread.
+- ChromaDB and PostgreSQL follow their respective backend concurrency models.
+- Storage read/write failures raise typed exceptions instead of appearing as an
+  empty memory set.
 
 ### Network Scenarios
 
@@ -218,7 +312,7 @@ print(context)
 - Use `type = "auto_fallback"` in config.toml
 - Automatically tries Ollama when available, falls back to naive when not
 - Perfect for switching between networks
-- Set `OLLAMA_HOST=http://192.168.0.156:11434` in .env for your network
+- Set `OLLAMA_HOST=http://localhost:11434` in `.env` for a local Ollama service
 
 **Offline/Local Development:**
 - Use `type = "naive"` in config.toml
@@ -227,8 +321,8 @@ print(context)
 
 **On Your Local Network:**
 - Set `type = "ollama"` in config.toml
-- Set `OLLAMA_HOST=http://192.168.0.156:11434` in .env
-- Requires Ollama running on your local network
+- Set `OLLAMA_HOST=http://localhost:11434` in `.env`
+- Requires Ollama running on the local machine
 
 **Internet Access:**
 - Set `type = "openai"` in config.toml
@@ -280,6 +374,47 @@ Run performance benchmarks to test your system:
 ```bash
 python benchmark_performance.py
 ```
+
+## Bourbon Research Desk demo
+
+`bourbon-research` is a persistent, evidence-first research agent built to exercise
+the context manager over multiple sessions. It discovers and snapshots sources,
+extracts claims with provenance, records possible contradictions, consolidates
+durable memory, and emits a cited Markdown report.
+
+```bash
+# Start a project (the workspace defaults to .bourbon-research/)
+bourbon-research project create "Bourbon whiskey" \
+  --objective "Document its history, law, production, finishes, recipes, and comparisons; separate evidence from folklore."
+
+# Build the research questions, preview discovery, then ingest a small batch
+bourbon-research research plan
+bourbon-research --json research run --max-sources 5 --dry-run
+bourbon-research --json research run --max-sources 3
+
+# Inspect what persisted between sessions
+bourbon-research status
+bourbon-research sources
+bourbon-research claims
+bourbon-research contradictions
+bourbon-research memory trace --token-budget 1200 \
+  --query "Document bourbon's federal definition and disputed origins"
+bourbon-research session changes
+
+# Create durable derived memory and a cited working report
+bourbon-research research consolidate
+bourbon-research report --output bourbon-report.md
+```
+
+With `OPENAI_API_KEY`, discovery defaults to the Responses API web-search tool;
+set `RESEARCH_SEARCH_PROVIDER=brave` to use `BRAVE_SEARCH_API_KEY` instead.
+Without credentials, discovery uses Wikipedia and claim extraction uses a clearly
+marked heuristic fallback, which is useful for testing the pipeline rather than
+producing finished scholarship. `RESEARCH_SEARCH_MODEL` controls the OpenAI search
+model, while `RESEARCH_MODEL` controls planning, extraction, and contradiction
+detection. Source policy can be
+selected per run with `--source-policy authoritative`, `exclude-community`, or
+`all`; the default excludes community and retail sources.
 
 ## Quick Examples
 

@@ -29,6 +29,12 @@ Quick Start:
 from .context_manager import ContextManager
 from .config import Config
 from .feedback import Feedback
+from .retrieval import RetrievalRequest, RetrievalResult
+from .embeddings import EmbeddingInfo, EmbeddingProvider
+from .hybrid import HybridWeights
+from .memory import MemoryKind, MemoryLifecycle, MemoryStatus
+from .consolidation import ConsolidationEngine
+from .evaluation import EvaluationDataset, RetrievalEvaluator
 
 # Version information
 __version__ = "0.2.0"
@@ -40,6 +46,17 @@ __all__ = [
     "ContextManager",
     "Config",
     "Feedback",
+    "RetrievalRequest",
+    "RetrievalResult",
+    "EmbeddingInfo",
+    "EmbeddingProvider",
+    "HybridWeights",
+    "MemoryKind",
+    "MemoryLifecycle",
+    "MemoryStatus",
+    "ConsolidationEngine",
+    "EvaluationDataset",
+    "RetrievalEvaluator",
     "__version__",
     "__author__",
     "__email__",

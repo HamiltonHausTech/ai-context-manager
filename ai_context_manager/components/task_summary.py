@@ -1,8 +1,9 @@
 from ai_context_manager.components import ContextComponent
+from ai_context_manager.memory import MemoryKind
 
 class TaskSummaryComponent(ContextComponent):
     def __init__(self, id: str, task_name: str, summary: str, score=1.0, tags=None):
-        super().__init__(id, tags or ["task", "summary"])
+        super().__init__(id, tags or ["task", "summary"], memory_kind=MemoryKind.EPISODE.value)
         self.task_name = task_name
         self.summary = summary
         self._score = score
@@ -12,5 +13,4 @@ class TaskSummaryComponent(ContextComponent):
 
     def score(self) -> float:
         return self._score
-
 

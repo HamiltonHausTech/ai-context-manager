@@ -1,24 +1,23 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Any
 
-try:
-    import tiktoken
-    enc = tiktoken.encoding_for_model("gpt-4")
-except ImportError:
-    enc = None
-
-def estimate_tokens(text: str) -> int:
-    if enc:
-        return len(enc.encode(text))
-    return len(text.split())  # Rough fallback
+from ai_context_manager.tokenization import estimate_tokens
+from ai_context_manager.memory import MemoryKind, MemoryLifecycle
 
 # --- Base Component Class ---
 class ContextComponent(ABC):
-    def __init__(self, id: str, tags: Optional[List[str]] = None, lazy: bool = False):
+    def __init__(
+        self,
+        id: str,
+        tags: Optional[List[str]] = None,
+        lazy: bool = False,
+        memory_kind: str = MemoryKind.GENERIC.value,
+    ):
         self.id = id
         self.tags = tags or []
         self.lazy = lazy
         self._content_cache = None
+        self.memory = MemoryLifecycle(kind=memory_kind)
 
     @abstractmethod
     def load_content(self) -> str:
@@ -35,11 +34,20 @@ class ContextComponent(ABC):
         return {
             "id": self.id,
             "tags": self.tags,
-            "type": self.__class__.__name__
+            "type": self.__class__.__name__,
+            "memory": self.memory.to_dict(),
         }
 
-    def matches_tags(self, include: List[str]) -> bool:
-        return any(tag in self.tags for tag in include)
+    def set_memory_lifecycle(self, lifecycle: MemoryLifecycle) -> None:
+        lifecycle.validate()
+        self.memory = lifecycle
+
+    def matches_tags(self, include: List[str], mode: str = "any") -> bool:
+        if mode == "all":
+            return all(tag in self.tags for tag in include)
+        if mode == "any":
+            return any(tag in self.tags for tag in include)
+        raise ValueError("Tag match mode must be 'any' or 'all'")
 
     def score(self) -> float:
         return 1.0

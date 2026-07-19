@@ -131,6 +131,9 @@ dmypy.json
 # AI Context Manager specific files
 # =================================
 
+# Local research desk data and captured source snapshots
+.bourbon-research/
+
 # Configuration files with sensitive data
 config.toml
 .env

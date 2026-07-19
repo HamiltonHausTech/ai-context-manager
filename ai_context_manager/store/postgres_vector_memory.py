@@ -6,7 +6,6 @@ import json
 import logging
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime
-import uuid
 
 try:
     import psycopg2
@@ -16,13 +15,18 @@ try:
 except ImportError:
     PSYCOPG2_AVAILABLE = False
 
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-except ImportError:
-    NUMPY_AVAILABLE = False
-
 from .base import MemoryStore
+from .errors import StorageReadError, StorageWriteError
+from ai_context_manager.embeddings import (
+    EmbeddingDimensionError,
+    EmbeddingProvider,
+    SentenceTransformerEmbeddingProvider,
+    create_embedding_text,
+    embedding_metadata,
+    needs_reembedding,
+)
+from ai_context_manager.hybrid import HybridWeights, rank_hybrid
+from ai_context_manager.memory import memory_record_is_active
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +53,9 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                  embedding_dimension: int = 384,
                  max_connections: int = 20,
                  index_type: str = "hnsw",  # "hnsw" or "ivfflat"
-                 index_parameters: Optional[Dict[str, Any]] = None):
+                 index_parameters: Optional[Dict[str, Any]] = None,
+                 embedding_model: str = "all-MiniLM-L6-v2",
+                 embedding_provider: Optional[EmbeddingProvider] = None):
         """
         Initialize PostgreSQL vector memory store.
         
@@ -68,9 +74,6 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         if not PSYCOPG2_AVAILABLE:
             raise ImportError("psycopg2 not available. Install with: pip install psycopg2-binary")
         
-        if not NUMPY_AVAILABLE:
-            raise ImportError("numpy not available. Install with: pip install numpy")
-        
         # Use environment variables for security (Bandit B105, B106)
         import os
         self.host = host or os.getenv("POSTGRES_HOST", "localhost")
@@ -80,6 +83,15 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         self.password = password or os.getenv("POSTGRES_PASSWORD", "")  # nosec B106
         self.table_name = table_name
         self.embedding_dimension = embedding_dimension
+        self.embedding_provider = embedding_provider or SentenceTransformerEmbeddingProvider(
+            embedding_model, dimension=embedding_dimension
+        )
+        if self.embedding_provider.info.dimension != embedding_dimension:
+            raise EmbeddingDimensionError(
+                f"Provider dimension {self.embedding_provider.info.dimension} does not "
+                f"match PostgreSQL vector dimension {embedding_dimension}"
+            )
+        self.last_embedding_error = None
         self.index_type = index_type
         self.index_parameters = index_parameters or {}
         
@@ -87,11 +99,11 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=max_connections,
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            user=self.user,
+            password=self.password
         )
         
         # Initialize database schema
@@ -210,11 +222,14 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         return [float(x) for x in vector_str.strip('[]').split(',')]
     
     def _generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for text (placeholder - should use actual embedding model)."""
-        # This is a placeholder - in production, you'd use your embedding model
-        # For now, return a random vector of the correct dimension
-        np.random.seed(hash(text) % 2**32)  # Deterministic based on text
-        return np.random.random(self.embedding_dimension).tolist()
+        """Generate a real embedding through the configured provider."""
+        try:
+            vector = self.embedding_provider.embed_checked(text)
+            self.last_embedding_error = None
+            return vector
+        except Exception as exc:
+            self.last_embedding_error = str(exc)
+            raise
     
     def load_all(self) -> List[Dict]:
         """Load all components from PostgreSQL."""
@@ -239,6 +254,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                         "score": float(row["score"]),
                         "metadata": row["metadata"] or {}
                     }
+                    component["memory"] = component["metadata"].get("memory")
                     components.append(component)
                 
                 logger.debug(f"Loaded {len(components)} components from PostgreSQL")
@@ -246,7 +262,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                 
         except Exception as e:
             logger.error(f"Failed to load components from PostgreSQL: {e}")
-            return []
+            raise StorageReadError("Failed to load components from PostgreSQL") from e
         finally:
             self._return_connection(conn)
     
@@ -258,11 +274,22 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
             content = component.get("content", "")
             component_type = component.get("type", "Unknown")
             tags = component.get("tags", [])
-            metadata = component.get("metadata", {})
+            metadata = dict(component.get("metadata", {}))
+            metadata.update({
+                "schema_version": component.get(
+                    "schema_version", metadata.get("schema_version", 1)
+                ),
+                "component_data": component.get(
+                    "component_data", metadata.get("component_data", "{}")
+                ),
+                "memory": component.get("memory", metadata.get("memory")),
+            })
             score = component.get("score", 1.0)
-            
+            searchable_text = create_embedding_text(component)
+            metadata.update(embedding_metadata(self.embedding_provider, searchable_text))
+
             # Generate embedding
-            embedding = self._generate_embedding(content)
+            embedding = self._generate_embedding(searchable_text)
             embedding_vector = self._array_to_vector(embedding)
             
             with conn.cursor() as cur:
@@ -296,7 +323,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         except Exception as e:
             conn.rollback()
             logger.error(f"Failed to save component {component.get('id', 'unknown')} to PostgreSQL: {e}")
-            raise
+            raise StorageWriteError("Failed to save component to PostgreSQL") from e
         finally:
             self._return_connection(conn)
     
@@ -312,7 +339,7 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
         except Exception as e:
             conn.rollback()
             logger.error(f"Failed to delete component {component_id} from PostgreSQL: {e}")
-            raise
+            raise StorageWriteError("Failed to delete component from PostgreSQL") from e
         finally:
             self._return_connection(conn)
     
@@ -343,14 +370,16 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                 
         except Exception as e:
             logger.error(f"Failed to get component {component_id} from PostgreSQL: {e}")
-            return None
+            raise StorageReadError("Failed to get component from PostgreSQL") from e
         finally:
             self._return_connection(conn)
     
     def search_similar(self, query: str, n_results: int = 10,
                       include_types: Optional[List[str]] = None,
                       include_tags: Optional[List[str]] = None,
-                      score_threshold: float = 0.0) -> List[Dict]:
+                      score_threshold: float = 0.0,
+                      hybrid_weights: Optional[HybridWeights] = None,
+                      include_inactive: bool = False) -> List[Dict]:
         """
         Search for similar components using vector similarity.
         
@@ -383,6 +412,17 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                 for tag in include_tags:
                     where_conditions.append("tags ? %s")
                     params.append(tag)
+
+            if not include_inactive:
+                where_conditions.append(
+                    "("
+                    "metadata->'memory' IS NULL OR ("
+                    "COALESCE(metadata->'memory'->>'status', 'active') = 'active' AND "
+                    "(metadata->'memory'->>'expires_at' IS NULL OR "
+                    "(metadata->'memory'->>'expires_at')::timestamptz > NOW())"
+                    ")"
+                    ")"
+                )
             
             where_clause = ""
             if where_conditions:
@@ -418,16 +458,41 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                             "similarity_score": similarity_score,
                             "metadata": row["metadata"] or {}
                         }
-                        similar_components.append(component)
+                        component["memory"] = component["metadata"].get("memory")
+                        if include_inactive or memory_record_is_active(component):
+                            similar_components.append(component)
                 
                 logger.debug(f"Found {len(similar_components)} similar components for query: {query[:50]}...")
-                return similar_components
+                return rank_hybrid(similar_components, hybrid_weights)
                 
         except Exception as e:
             logger.error(f"Failed to search PostgreSQL: {e}")
-            return []
+            raise
         finally:
             self._return_connection(conn)
+
+    def get_embedding_status(self) -> Dict[str, Any]:
+        return {
+            "available": self.last_embedding_error is None,
+            "degraded": self.last_embedding_error is not None,
+            "reason": self.last_embedding_error,
+            "provider": self.embedding_provider.info.to_dict(),
+        }
+
+    def reembed_all(self, stale_only: bool = True) -> int:
+        """Regenerate stored vectors whose content or provider metadata is stale."""
+        components = self.load_all()
+        updated = 0
+        for component in components:
+            metadata = component.get("metadata", {})
+            searchable_text = create_embedding_text(component)
+            if stale_only and not needs_reembedding(
+                metadata, self.embedding_provider, searchable_text
+            ):
+                continue
+            self.save_component(component)
+            updated += 1
+        return updated
     
     def get_stats(self) -> Dict[str, Any]:
         """Get PostgreSQL store statistics."""
@@ -468,6 +533,8 @@ class PostgreSQLVectorMemoryStore(MemoryStore):
                     "table_size": table_size,
                     "index_type": self.index_type,
                     "embedding_dimension": self.embedding_dimension,
+                    "embedding_provider": self.embedding_provider.info.to_dict(),
+                    "embedding_degraded": self.last_embedding_error is not None,
                     "connection_pool_size": self.connection_pool.closed,
                     "database": f"{self.host}:{self.port}/{self.database}"
                 }

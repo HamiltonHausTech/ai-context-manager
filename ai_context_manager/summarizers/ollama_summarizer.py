@@ -6,7 +6,7 @@ from ai_context_manager.summarizers import Summarizer
 # --- Ollama Summarizer ---
 
 class OllamaSummarizer(Summarizer):
-    def __init__(self, model="mistral", host="http://192.168.0.156:11434",timeout=30):
+    def __init__(self, model="qwen2.5:7b-instruct", host="http://localhost:11434", timeout=30):
         self.model = model
         self.api_url = f"{host}/api/generate"
         self.timeout = timeout
