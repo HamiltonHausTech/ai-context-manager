@@ -37,7 +37,7 @@ jobs:
 
     - name: Extract metadata
       id: meta
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: |
           ${{ secrets.DOCKER_USERNAME }}/ai-context-manager
@@ -160,7 +160,7 @@ jobs:
 
     - name: Extract metadata for security scan
       id: meta-scan
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: |
           ${{ secrets.DOCKER_USERNAME }}/ai-context-manager
