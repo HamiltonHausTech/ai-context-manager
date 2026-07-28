@@ -1,5 +1,15 @@
-"""Versioned records for the adaptive context-selection experiment."""
+"""Versioned records and append-only evidence storage for adaptive experiments."""
 
+from .repository import (
+    DuplicateRecordError,
+    EvidenceEntry,
+    ExperimentRepository,
+    IntegrityError,
+    IntegrityReport,
+    RecordNotFoundError,
+    ReferenceIntegrityError,
+    RepositoryError,
+)
 from .schema import (
     FEEDBACK_SIGNAL_TYPES,
     FEEDBACK_SOURCES,
@@ -21,6 +31,14 @@ from .schema import (
 )
 
 __all__ = [
+    "ExperimentRepository",
+    "EvidenceEntry",
+    "IntegrityReport",
+    "RepositoryError",
+    "DuplicateRecordError",
+    "ReferenceIntegrityError",
+    "RecordNotFoundError",
+    "IntegrityError",
     "SCHEMA_VERSION",
     "FEEDBACK_SIGNAL_TYPES",
     "FEEDBACK_SOURCES",
