@@ -4,6 +4,10 @@ This stdlib-only module contains no persistence, provider, selection, scoring, o
 learning implementation. Selector-visible task inputs and sealed evaluation evidence
 are separate objects so held-out labels cannot be passed to a selector accidentally.
 
+Schema v1 was an unreleased development format and is intentionally unsupported.
+Schema v2 is the first candidate wire format; this module does not claim v1 migration
+support and rejects v1 payloads before nested deserialization.
+
 Held-out exact-text checks use ``" ".join(text.casefold().split())``: Unicode-aware
 case folding plus collapse of every whitespace run to one ASCII space. A selector-
 visible string is rejected when it contains the complete normalized gold answer.
@@ -19,7 +23,7 @@ import re
 from types import MappingProxyType
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 T = TypeVar("T", bound="RecordMixin")
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 
@@ -160,6 +164,17 @@ def _tuple_strings(data: Mapping, key: str) -> Tuple[str, ...]:
     return tuple(data.get(key, ()))
 
 
+def _record_tuple(name: str, value: Any, record_type: Type[Any]) -> Tuple[Any, ...]:
+    """Defensively convert a record sequence and reject bad members clearly."""
+    try:
+        records = tuple(value)
+    except TypeError:
+        raise ValueError(f"{name} must be a sequence of {record_type.__name__} records")
+    if not all(isinstance(item, record_type) for item in records):
+        raise ValueError(f"{name} must contain {record_type.__name__} records")
+    return records
+
+
 class RecordMixin:
     """Common deterministic JSON-compatible serialization for frozen records."""
 
@@ -264,14 +279,16 @@ class ScoringRubric(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
-        object.__setattr__(self, "criteria", tuple(self.criteria))
+        object.__setattr__(
+            self,
+            "criteria",
+            _record_tuple("criteria", self.criteria, RubricCriterion),
+        )
         _nonempty("rubric_id", self.rubric_id)
         _nonempty("instructions", self.instructions)
         _nonempty("provenance", self.provenance)
         if not self.criteria:
             raise ValueError("criteria must not be empty")
-        if not all(isinstance(item, RubricCriterion) for item in self.criteria):
-            raise ValueError("criteria must contain RubricCriterion records")
         ids = tuple(item.criterion_id for item in self.criteria)
         if len(set(ids)) != len(ids):
             raise ValueError("criterion IDs must be unique")
@@ -300,14 +317,18 @@ class TaskInputs(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
-        object.__setattr__(self, "candidate_context", tuple(self.candidate_context))
+        if not isinstance(self.profile, TaskProfile):
+            raise ValueError("profile must be a TaskProfile record")
+        object.__setattr__(
+            self,
+            "candidate_context",
+            _record_tuple("candidate_context", self.candidate_context, ContextItem),
+        )
         _nonempty("task_prompt", self.task_prompt)
         _nonempty("provenance", self.provenance)
         _positive("token_budget", self.token_budget)
         if not self.candidate_context:
             raise ValueError("candidate_context must not be empty")
-        if not all(isinstance(item, ContextItem) for item in self.candidate_context):
-            raise ValueError("candidate_context must contain ContextItem records")
         ids = tuple(item.context_item_id for item in self.candidate_context)
         if len(set(ids)) != len(ids):
             raise ValueError("candidate context IDs must be unique")
@@ -345,6 +366,8 @@ class SealedEvaluation(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        if not isinstance(self.scoring_rubric, ScoringRubric):
+            raise ValueError("scoring_rubric must be a ScoringRubric record")
         for name in (
             "required_context_item_ids",
             "useful_context_item_ids",
@@ -407,15 +430,20 @@ def _normalize_visible_text(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+def _normalize_metadata_key(value: str) -> str:
+    """Normalize casing and repeated punctuation/whitespace separators."""
+    return "_".join(part for part in re.split(r"[\W_]+", value.casefold()) if part)
+
+
 def _contains_sealed_key(value: Any) -> bool:
     if isinstance(value, Mapping):
         if any(
-            _normalize_visible_text(key) in _FORBIDDEN_HELD_OUT_METADATA_KEYS
+            _normalize_metadata_key(key) in _FORBIDDEN_HELD_OUT_METADATA_KEYS
             for key in value
         ):
             return True
         return any(_contains_sealed_key(item) for item in value.values())
-    if isinstance(value, tuple):
+    if isinstance(value, (list, tuple)):
         return any(_contains_sealed_key(item) for item in value)
     return False
 
@@ -424,8 +452,12 @@ def _json_strings(value: Any) -> Tuple[str, ...]:
     if isinstance(value, str):
         return (value,)
     if isinstance(value, Mapping):
-        return tuple(text for item in value.values() for text in _json_strings(item))
-    if isinstance(value, tuple):
+        return tuple(
+            text
+            for key, item in value.items()
+            for text in _json_strings(key) + _json_strings(item)
+        )
+    if isinstance(value, (list, tuple)):
         return tuple(text for item in value for text in _json_strings(item))
     return ()
 
@@ -443,6 +475,10 @@ class TaskCase(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        if not isinstance(self.inputs, TaskInputs):
+            raise ValueError("inputs must be a TaskInputs record")
+        if not isinstance(self.sealed_evaluation, SealedEvaluation):
+            raise ValueError("sealed_evaluation must be a SealedEvaluation record")
         for name in ("task_case_id", "dataset_version", "provenance"):
             _nonempty(name, getattr(self, name))
         _timestamp("created_timestamp", self.created_timestamp)
@@ -458,23 +494,13 @@ class TaskCase(RecordMixin):
         if not sealed_ids.issubset(candidate_ids):
             raise ValueError("sealed context IDs must refer to candidates")
         if self.split == "held_out":
-            visible_metadata = (self.inputs.visible_metadata,) + tuple(
-                item.metadata for item in self.inputs.candidate_context
-            )
-            if any(_contains_sealed_key(item) for item in visible_metadata):
+            selector_payload = self.inputs.to_dict()
+            if _contains_sealed_key(selector_payload):
                 raise ValueError(
                     "held_out selector-visible metadata contains sealed evaluation or adaptation feedback"
                 )
             gold = _normalize_visible_text(self.sealed_evaluation.gold_answer)
-            visible_strings = (
-                (self.inputs.task_prompt,)
-                + tuple(item.content for item in self.inputs.candidate_context)
-                + tuple(
-                    text
-                    for metadata in visible_metadata
-                    for text in _json_strings(metadata)
-                )
-            )
+            visible_strings = _json_strings(selector_payload)
             if any(gold in _normalize_visible_text(text) for text in visible_strings):
                 raise ValueError(
                     "held_out selector-visible text contains the full normalized gold answer"
@@ -551,6 +577,7 @@ class RunManifest(RecordMixin):
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "RunManifest":
+        _version(data)
         return cls._from_flat_dict(
             data, tool_availability=_tuple_strings(data, "tool_availability")
         )
@@ -631,6 +658,7 @@ class SelectionDecision(RecordMixin):
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "SelectionDecision":
+        _version(data)
         return cls._from_flat_dict(
             data,
             selected_context_item_ids=_tuple_strings(data, "selected_context_item_ids"),
@@ -670,6 +698,17 @@ class CriterionScore(RecordMixin):
 
 @dataclass(frozen=True)
 class TaskOutcome(RecordMixin):
+    """Completed execution-and-evaluation evidence for one task.
+
+    Successful records require bounded aggregate and criterion scores plus paired
+    evaluation and raw-provider-response artifacts. ``provider_response_hash`` covers
+    the referenced raw provider response artifact, not ``response_text``. The evaluation
+    artifact captures rubric inputs and detailed weighting. Aggregate arithmetic cannot
+    be recomputed from criterion scores alone without that artifact, so the wire format
+    preserves the aggregation method/version/artifact rather than assuming equal weights.
+    Failed executions are unscored; paired artifacts remain optional evidence.
+    """
+
     outcome_id: str
     run_id: str
     task_case_id: str
@@ -683,12 +722,15 @@ class TaskOutcome(RecordMixin):
     scorer_id: str
     scorer_version: str
     scorer_hash: str
+    aggregation_method: str
+    aggregation_version: str
     criterion_scores: Tuple[CriterionScore, ...]
     evaluation_artifact_reference: Optional[str]
     evaluation_artifact_hash: Optional[str]
     model_input_tokens: int
     model_output_tokens: int
     execution_latency_ms: float
+    provider_response_artifact_reference: Optional[str]
     provider_response_hash: Optional[str]
     error_category: Optional[str]
     completed_timestamp: str
@@ -697,7 +739,11 @@ class TaskOutcome(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
-        object.__setattr__(self, "criterion_scores", tuple(self.criterion_scores))
+        object.__setattr__(
+            self,
+            "criterion_scores",
+            _record_tuple("criterion_scores", self.criterion_scores, CriterionScore),
+        )
         for name in (
             "outcome_id",
             "run_id",
@@ -707,27 +753,37 @@ class TaskOutcome(RecordMixin):
             "scorer_id",
             "scorer_version",
             "scorer_hash",
+            "aggregation_method",
+            "aggregation_version",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
         _timestamp("completed_timestamp", self.completed_timestamp)
         if self.execution_status not in {"success", "failure"}:
             raise ValueError("execution_status must be success or failure")
+
+        score_values = (self.raw_score, self.max_score, self.normalized_score)
         if self.execution_status == "success":
             _nonempty("response_text", self.response_text)
             if self.error_category is not None:
                 raise ValueError("error_category must be null for success")
+            if any(value is None for value in score_values) and not all(
+                value is None for value in score_values
+            ):
+                raise ValueError(
+                    "raw_score, max_score, and normalized_score must be provided together"
+                )
+            if all(value is None for value in score_values):
+                raise ValueError("aggregate scores are required for success")
         else:
             if self.error_category is None:
                 raise ValueError("error_category is required for failure")
             _nonempty("error_category", self.error_category)
-        score_values = (self.raw_score, self.max_score, self.normalized_score)
-        if any(value is None for value in score_values) and not all(
-            value is None for value in score_values
-        ):
-            raise ValueError(
-                "raw_score, max_score, and normalized_score must be provided together"
-            )
+            if any(value is not None for value in score_values):
+                raise ValueError("aggregate scores must be null for failure")
+            if self.criterion_scores:
+                raise ValueError("criterion_scores must be empty for failure")
+
         if all(value is not None for value in score_values):
             raw = _finite_number("raw_score", self.raw_score)
             maximum = _finite_number("max_score", self.max_score)
@@ -743,8 +799,7 @@ class TaskOutcome(RecordMixin):
                 abs_tol=1e-12,
             ):
                 raise ValueError("normalized_score must equal raw_score / max_score")
-        if not all(isinstance(item, CriterionScore) for item in self.criterion_scores):
-            raise ValueError("criterion_scores must contain CriterionScore records")
+
         ids = tuple(item.criterion_id for item in self.criterion_scores)
         if len(set(ids)) != len(ids):
             raise ValueError("criterion IDs must be unique")
@@ -754,11 +809,22 @@ class TaskOutcome(RecordMixin):
             "evaluation_artifact_hash",
             self.evaluation_artifact_hash,
         )
+        _paired(
+            "provider_response_artifact_reference",
+            self.provider_response_artifact_reference,
+            "provider_response_hash",
+            self.provider_response_hash,
+        )
+        if self.execution_status == "success":
+            if not self.criterion_scores:
+                raise ValueError("criterion_scores are required for success")
+            if self.evaluation_artifact_reference is None:
+                raise ValueError("evaluation artifact is required for success")
+            if self.provider_response_artifact_reference is None:
+                raise ValueError("provider response artifact is required for success")
         _nonnegative_integer("model_input_tokens", self.model_input_tokens)
         _nonnegative_integer("model_output_tokens", self.model_output_tokens)
         _nonnegative_finite("execution_latency_ms", self.execution_latency_ms)
-        if self.provider_response_hash is not None:
-            _nonempty("provider_response_hash", self.provider_response_hash)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "TaskOutcome":
@@ -850,6 +916,7 @@ class FeedbackEvent(RecordMixin):
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "FeedbackEvent":
+        _version(data)
         return cls._from_flat_dict(
             data,
             affected_context_item_ids=_tuple_strings(data, "affected_context_item_ids"),
@@ -894,6 +961,7 @@ class UtilityEstimate(RecordMixin):
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "UtilityEstimate":
+        _version(data)
         return cls._from_flat_dict(
             data,
             context_attributes=_tuple_strings(data, "context_attributes"),
@@ -937,6 +1005,7 @@ class ExperimentResult(RecordMixin):
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "ExperimentResult":
+        _version(data)
         changes = {
             key: _tuple_strings(data, key)
             for key in (

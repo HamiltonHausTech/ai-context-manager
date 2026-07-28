@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -137,12 +138,15 @@ def all_records():
         scorer_id="exact-match-judge",
         scorer_version="v1",
         scorer_hash="sha256:scorer",
+        aggregation_method="rubric-weighted-sum",
+        aggregation_version="v1",
         criterion_scores=(CriterionScore("accuracy", 9.0, 10.0, 0.9),),
         evaluation_artifact_reference="artifact://evaluation/1",
         evaluation_artifact_hash="sha256:evaluation",
         model_input_tokens=20,
         model_output_tokens=4,
         execution_latency_ms=125.0,
+        provider_response_artifact_reference="artifact://provider-response/1",
         provider_response_hash="sha256:response",
         error_category=None,
         completed_timestamp="2026-07-28T12:02:00Z",
@@ -583,3 +587,285 @@ def test_utility_source_event_ids_reject_empty_tuple_explicitly():
     estimate = all_records()[-2]
     with pytest.raises(ValueError, match="source_event_ids must not be empty"):
         UtilityEstimate.from_dict({**estimate.to_dict(), "source_event_ids": []})
+
+
+def test_v2_is_first_candidate_wire_format_and_unreleased_v1_is_rejected_early():
+    fixture = Path(__file__).with_name("fixtures") / "selection_decision_v1.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    # Prove version rejection wins over later tuple conversion/constructor processing.
+    payload["selected_token_counts"] = None
+
+    assert SCHEMA_VERSION == "2"
+    with pytest.raises(ValueError, match="unsupported schema_version: 1"):
+        SelectionDecision.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "gold_answer",
+        "Gold Answer",
+        "gold-answer",
+        "gold___---   answer",
+        "REQUIRED Context---Item IDs",
+    ],
+)
+def test_held_out_metadata_key_denylist_normalizes_case_and_separators(key):
+    data = sample_case("held_out").to_dict()
+    data["inputs"]["visible_metadata"] = {"nested": {key: "not the answer"}}
+    with pytest.raises(ValueError, match="held_out selector-visible metadata"):
+        TaskCase.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "profile_description",
+        "candidate_source",
+        "candidate_id",
+        "candidate_provenance",
+    ],
+)
+def test_held_out_scans_every_string_in_complete_task_inputs_payload(location):
+    data = sample_case("held_out").to_dict()
+    leak = "prefix YES,   WITHIN 30 DAYS. suffix"
+    if location == "profile_description":
+        data["inputs"]["profile"]["description"] = leak
+    elif location == "candidate_source":
+        data["inputs"]["candidate_context"][0]["source"] = leak
+    elif location == "candidate_id":
+        data["inputs"]["candidate_context"][0]["context_item_id"] = leak
+        data["sealed_evaluation"]["required_context_item_ids"] = [leak]
+    else:
+        data["inputs"]["candidate_context"][0]["provenance"] = leak
+    with pytest.raises(ValueError, match="normalized gold answer"):
+        TaskCase.from_dict(data)
+
+
+def test_held_out_complete_payload_scan_allows_safe_nonmatching_strings():
+    data = sample_case("held_out").to_dict()
+    data["inputs"]["profile"]["description"] = "General return guidance."
+    data["inputs"]["candidate_context"][0]["source"] = "support portal"
+    data["inputs"]["candidate_context"][0]["provenance"] = "fixture:safe"
+    assert TaskCase.from_dict(data).split == "held_out"
+
+
+def test_nested_record_types_are_validated_before_dereferencing():
+    case = sample_case()
+    outcome = next(
+        record for record in all_records() if isinstance(record, TaskOutcome)
+    )
+    constructors = (
+        (
+            lambda: TaskInputs(
+                profile={"task_family_id": "wrong"},
+                task_prompt="prompt",
+                candidate_context=case.inputs.candidate_context,
+                token_budget=10,
+                visible_metadata={},
+                provenance="test",
+            ),
+            "profile must be a TaskProfile record",
+        ),
+        (
+            lambda: TaskInputs(
+                profile=case.inputs.profile,
+                task_prompt="prompt",
+                candidate_context=({"context_item_id": "wrong"},),
+                token_budget=10,
+                visible_metadata={},
+                provenance="test",
+            ),
+            "candidate_context must contain ContextItem records",
+        ),
+        (
+            lambda: ScoringRubric(
+                rubric_id="rubric",
+                instructions="score",
+                criteria=({"criterion_id": "wrong"},),
+                provenance="test",
+            ),
+            "criteria must contain RubricCriterion records",
+        ),
+        (
+            lambda: SealedEvaluation(
+                gold_answer="answer",
+                scoring_rubric={"rubric_id": "wrong"},
+                required_context_item_ids=(),
+                useful_context_item_ids=(),
+                misleading_context_item_ids=(),
+                irrelevant_context_item_ids=(),
+                provenance="test",
+            ),
+            "scoring_rubric must be a ScoringRubric record",
+        ),
+        (
+            lambda: TaskCase(
+                task_case_id="case",
+                split="adaptation",
+                inputs={"task_prompt": "wrong"},
+                sealed_evaluation=case.sealed_evaluation,
+                dataset_version="v1",
+                created_timestamp="2026-07-28T12:00:00Z",
+                provenance="test",
+            ),
+            "inputs must be a TaskInputs record",
+        ),
+        (
+            lambda: TaskCase(
+                task_case_id="case",
+                split="adaptation",
+                inputs=case.inputs,
+                sealed_evaluation={"gold_answer": "wrong"},
+                dataset_version="v1",
+                created_timestamp="2026-07-28T12:00:00Z",
+                provenance="test",
+            ),
+            "sealed_evaluation must be a SealedEvaluation record",
+        ),
+        (
+            lambda: TaskOutcome(
+                **{
+                    **outcome.__dict__,
+                    "criterion_scores": ({"criterion_id": "wrong"},),
+                }
+            ),
+            "criterion_scores must contain CriterionScore records",
+        ),
+    )
+    for construct, message in constructors:
+        with pytest.raises(ValueError, match=message):
+            construct()
+
+
+def test_nested_record_sequences_are_defensively_converted_to_tuples():
+    case = sample_case()
+    mutable_candidates = list(case.inputs.candidate_context)
+    inputs = TaskInputs(
+        profile=case.inputs.profile,
+        task_prompt="prompt",
+        candidate_context=mutable_candidates,
+        token_budget=10,
+        visible_metadata={},
+        provenance="test",
+    )
+    mutable_candidates.clear()
+    assert isinstance(inputs.candidate_context, tuple)
+    assert len(inputs.candidate_context) == 2
+
+
+def test_task_outcome_requires_completed_success_evaluation_evidence():
+    outcome = next(
+        record for record in all_records() if isinstance(record, TaskOutcome)
+    )
+    payload = outcome.to_dict()
+    for changes, message in (
+        (
+            {"raw_score": None, "max_score": None, "normalized_score": None},
+            "aggregate scores are required for success",
+        ),
+        ({"criterion_scores": []}, "criterion_scores are required for success"),
+        (
+            {
+                "evaluation_artifact_reference": None,
+                "evaluation_artifact_hash": None,
+            },
+            "evaluation artifact is required for success",
+        ),
+        (
+            {
+                "provider_response_artifact_reference": None,
+                "provider_response_hash": None,
+            },
+            "provider response artifact is required for success",
+        ),
+    ):
+        with pytest.raises(ValueError, match=message):
+            TaskOutcome.from_dict({**payload, **changes})
+
+
+def test_task_outcome_rejects_scored_failure_and_accepts_valid_records():
+    success = next(
+        record for record in all_records() if isinstance(record, TaskOutcome)
+    )
+    assert TaskOutcome.from_dict(success.to_dict()) == success
+    failure = {
+        **success.to_dict(),
+        "execution_status": "failure",
+        "response_text": "",
+        "raw_score": None,
+        "max_score": None,
+        "normalized_score": None,
+        "criterion_scores": [],
+        "evaluation_artifact_reference": None,
+        "evaluation_artifact_hash": None,
+        "provider_response_artifact_reference": None,
+        "provider_response_hash": None,
+        "error_category": "provider_error",
+    }
+    assert TaskOutcome.from_dict(failure).execution_status == "failure"
+    with pytest.raises(ValueError, match="aggregate scores must be null for failure"):
+        TaskOutcome.from_dict({**failure, "raw_score": 1.0})
+    with pytest.raises(ValueError, match="criterion_scores must be empty for failure"):
+        TaskOutcome.from_dict(
+            {**failure, "criterion_scores": success.to_dict()["criterion_scores"]}
+        )
+
+
+def test_task_outcome_aggregation_and_provider_response_evidence():
+    payload = next(
+        record.to_dict() for record in all_records() if isinstance(record, TaskOutcome)
+    )
+    for field in ("aggregation_method", "aggregation_version"):
+        with pytest.raises(ValueError, match=f"{field} must be nonempty"):
+            TaskOutcome.from_dict({**payload, field: ""})
+    for changes in (
+        {"provider_response_artifact_reference": None},
+        {"provider_response_hash": None},
+    ):
+        with pytest.raises(
+            ValueError,
+            match=(
+                "provider_response_artifact_reference and provider_response_hash "
+                "must be provided together"
+            ),
+        ):
+            TaskOutcome.from_dict({**payload, **changes})
+
+
+def _timestamp_records():
+    records = all_records()
+    expected = (
+        (TaskProfile, "created_timestamp"),
+        (ContextItem, "created_timestamp"),
+        (TaskCase, "created_timestamp"),
+        (RunManifest, "started_timestamp"),
+        (SelectionDecision, "decided_timestamp"),
+        (TaskOutcome, "completed_timestamp"),
+        (FeedbackEvent, "occurred_timestamp"),
+        (UtilityEstimate, "estimated_timestamp"),
+        (ExperimentResult, "completed_timestamp"),
+    )
+    return tuple(
+        (next(record for record in records if isinstance(record, record_type)), field)
+        for record_type, field in expected
+    )
+
+
+@pytest.mark.parametrize("record,timestamp_field", _timestamp_records())
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "2026-07-28T12:00:00",
+        "2026-07-28 12:00:00Z",
+        "2026-07-28T12:00:00+00:00",
+        "not-a-time",
+    ],
+)
+def test_every_timestamp_bearing_record_rejects_noncanonical_values(
+    record, timestamp_field, bad
+):
+    with pytest.raises(
+        ValueError, match=f"{timestamp_field} must be canonical UTC RFC 3339"
+    ):
+        type(record).from_dict({**record.to_dict(), timestamp_field: bad})
