@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -206,6 +207,10 @@ def all_records():
     )
 
 
+def record_of_type(record_type):
+    return next(record for record in all_records() if isinstance(record, record_type))
+
+
 @pytest.mark.parametrize("record", all_records())
 def test_all_public_records_round_trip_json(record):
     payload = record.to_dict()
@@ -289,14 +294,14 @@ def test_numeric_ranges_and_positive_budgets_are_validated():
     with pytest.raises(ValueError, match="token_budget must be positive"):
         TaskInputs.from_dict(inputs)
 
-    outcome = all_records()[-4].to_dict()
+    outcome = record_of_type(TaskOutcome).to_dict()
     outcome["normalized_score"] = -0.1
     with pytest.raises(ValueError, match="normalized_score must be between 0 and 1"):
         TaskOutcome.from_dict(outcome)
 
 
 def test_feedback_values_are_explicit_and_validated():
-    event = all_records()[-3]
+    event = record_of_type(FeedbackEvent)
     for changes, message in (
         ({"source": "telepathy"}, "source must be one of"),
         ({"signal_type": "vibes"}, "signal_type must be one of"),
@@ -310,7 +315,7 @@ def test_feedback_values_are_explicit_and_validated():
 
 
 def test_utility_event_ids_are_nonempty_and_deduplicated():
-    estimate = all_records()[-2]
+    estimate = record_of_type(UtilityEstimate)
     with pytest.raises(ValueError, match="source_event_ids must not contain empty IDs"):
         UtilityEstimate.from_dict({**estimate.to_dict(), "source_event_ids": [""]})
     with pytest.raises(ValueError, match="source_event_ids must be unique"):
@@ -320,7 +325,7 @@ def test_utility_event_ids_are_nonempty_and_deduplicated():
 
 
 def test_selection_order_token_counts_and_budget_are_validated():
-    decision = all_records()[-5]
+    decision = record_of_type(SelectionDecision)
     with pytest.raises(ValueError, match="selected context IDs must be unique"):
         SelectionDecision.from_dict(
             {
@@ -405,8 +410,37 @@ def test_held_out_allows_nonmatching_visible_text():
     assert TaskCase.from_dict(data).split == "held_out"
 
 
+@pytest.mark.parametrize("gold", ["id", "schema", "version", "context"])
+def test_held_out_gold_does_not_match_structural_wire_keys(gold):
+    data = sample_case("held_out").to_dict()
+    data["sealed_evaluation"]["gold_answer"] = gold
+
+    assert TaskCase.from_dict(data).sealed_evaluation.gold_answer == gold
+
+
+@pytest.mark.parametrize("gold", ["id", "schema", "version", "context"])
+@pytest.mark.parametrize(
+    "location", ["profile_value", "candidate_value", "metadata_key", "metadata_value"]
+)
+def test_held_out_short_gold_still_matches_selector_visible_values(gold, location):
+    data = sample_case("held_out").to_dict()
+    data["sealed_evaluation"]["gold_answer"] = gold
+    leak = f"prefix {gold} suffix"
+    if location == "profile_value":
+        data["inputs"]["profile"]["name"] = leak
+    elif location == "candidate_value":
+        data["inputs"]["candidate_context"][0]["source"] = leak
+    elif location == "metadata_key":
+        data["inputs"]["visible_metadata"] = {leak: "safe"}
+    else:
+        data["inputs"]["candidate_context"][0]["metadata"] = {"note": leak}
+
+    with pytest.raises(ValueError, match="normalized gold answer"):
+        TaskCase.from_dict(data)
+
+
 def test_feedback_signed_ranges_encodings_and_structured_round_trip():
-    event = all_records()[-3]
+    event = record_of_type(FeedbackEvent)
     assert (
         FeedbackEvent.from_dict(
             {**event.to_dict(), "numeric_value": -1.0}
@@ -441,7 +475,7 @@ def test_feedback_signed_ranges_encodings_and_structured_round_trip():
 
 
 def test_correction_feedback_requirements_and_exclusivity():
-    event = all_records()[-3].to_dict()
+    event = record_of_type(FeedbackEvent).to_dict()
     correction = {
         **event,
         "signal_type": "correction",
@@ -459,7 +493,7 @@ def test_correction_feedback_requirements_and_exclusivity():
 
 
 def test_selection_audit_fields_tokens_latency_and_pairs():
-    decision = all_records()[-5].to_dict()
+    decision = record_of_type(SelectionDecision).to_dict()
     empty = {
         **decision,
         "selected_context_item_ids": [],
@@ -495,7 +529,7 @@ def test_selection_audit_fields_tokens_latency_and_pairs():
 
 
 def test_task_outcome_success_failure_scores_usage_criteria_and_artifacts():
-    outcome = all_records()[-4].to_dict()
+    outcome = record_of_type(TaskOutcome).to_dict()
     with pytest.raises(
         ValueError, match="normalized_score must equal raw_score / max_score"
     ):
@@ -537,28 +571,8 @@ def test_task_outcome_success_failure_scores_usage_criteria_and_artifacts():
         TaskOutcome.from_dict({**failure, "error_category": None})
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [
-        "2026-07-28T12:00:00",
-        "2026-07-28 12:00:00Z",
-        "2026-07-28T12:00:00+00:00",
-        "not-a-time",
-    ],
-)
-def test_all_timestamps_require_canonical_utc_rfc3339(bad):
-    profile = sample_case().inputs.profile.to_dict()
-    with pytest.raises(
-        ValueError, match="created_timestamp must be canonical UTC RFC 3339"
-    ):
-        TaskProfile.from_dict({**profile, "created_timestamp": bad})
-    assert TaskProfile.from_dict(
-        {**profile, "created_timestamp": "2026-07-28T12:00:00.123456Z"}
-    )
-
-
 def test_run_manifest_reproducibility_seed_tools_and_timestamp():
-    manifest = all_records()[-6].to_dict()
+    manifest = record_of_type(RunManifest).to_dict()
     for field in (
         "dataset_hash",
         "prompt_template_hash",
@@ -584,7 +598,7 @@ def test_run_manifest_reproducibility_seed_tools_and_timestamp():
 
 
 def test_utility_source_event_ids_reject_empty_tuple_explicitly():
-    estimate = all_records()[-2]
+    estimate = record_of_type(UtilityEstimate)
     with pytest.raises(ValueError, match="source_event_ids must not be empty"):
         UtilityEstimate.from_dict({**estimate.to_dict(), "source_event_ids": []})
 
@@ -652,9 +666,7 @@ def test_held_out_complete_payload_scan_allows_safe_nonmatching_strings():
 
 def test_nested_record_types_are_validated_before_dereferencing():
     case = sample_case()
-    outcome = next(
-        record for record in all_records() if isinstance(record, TaskOutcome)
-    )
+    outcome = record_of_type(TaskOutcome)
     constructors = (
         (
             lambda: TaskInputs(
@@ -724,11 +736,9 @@ def test_nested_record_types_are_validated_before_dereferencing():
             "sealed_evaluation must be a SealedEvaluation record",
         ),
         (
-            lambda: TaskOutcome(
-                **{
-                    **outcome.__dict__,
-                    "criterion_scores": ({"criterion_id": "wrong"},),
-                }
+            lambda: replace(
+                outcome,
+                criterion_scores=({"criterion_id": "wrong"},),
             ),
             "criterion_scores must contain CriterionScore records",
         ),
@@ -755,9 +765,7 @@ def test_nested_record_sequences_are_defensively_converted_to_tuples():
 
 
 def test_task_outcome_requires_completed_success_evaluation_evidence():
-    outcome = next(
-        record for record in all_records() if isinstance(record, TaskOutcome)
-    )
+    outcome = record_of_type(TaskOutcome)
     payload = outcome.to_dict()
     for changes, message in (
         (
@@ -785,9 +793,7 @@ def test_task_outcome_requires_completed_success_evaluation_evidence():
 
 
 def test_task_outcome_rejects_scored_failure_and_accepts_valid_records():
-    success = next(
-        record for record in all_records() if isinstance(record, TaskOutcome)
-    )
+    success = record_of_type(TaskOutcome)
     assert TaskOutcome.from_dict(success.to_dict()) == success
     failure = {
         **success.to_dict(),
@@ -813,9 +819,7 @@ def test_task_outcome_rejects_scored_failure_and_accepts_valid_records():
 
 
 def test_task_outcome_aggregation_and_provider_response_evidence():
-    payload = next(
-        record.to_dict() for record in all_records() if isinstance(record, TaskOutcome)
-    )
+    payload = record_of_type(TaskOutcome).to_dict()
     for field in ("aggregation_method", "aggregation_version"):
         with pytest.raises(ValueError, match=f"{field} must be nonempty"):
             TaskOutcome.from_dict({**payload, field: ""})
@@ -869,3 +873,76 @@ def test_every_timestamp_bearing_record_rejects_noncanonical_values(
         ValueError, match=f"{timestamp_field} must be canonical UTC RFC 3339"
     ):
         type(record).from_dict({**record.to_dict(), timestamp_field: bad})
+
+
+@pytest.mark.parametrize("record", all_records())
+def test_public_from_dict_rejects_non_mapping_payloads(record):
+    with pytest.raises(ValueError, match="payload must be an object"):
+        type(record).from_dict(None)
+
+
+@pytest.mark.parametrize(
+    "record_type,field",
+    [
+        (ScoringRubric, "criteria"),
+        (TaskInputs, "candidate_context"),
+        (SealedEvaluation, "required_context_item_ids"),
+        (SealedEvaluation, "useful_context_item_ids"),
+        (SealedEvaluation, "misleading_context_item_ids"),
+        (SealedEvaluation, "irrelevant_context_item_ids"),
+        (RunManifest, "tool_availability"),
+        (SelectionDecision, "selected_context_item_ids"),
+        (SelectionDecision, "selected_token_counts"),
+        (TaskOutcome, "criterion_scores"),
+        (FeedbackEvent, "affected_context_item_ids"),
+        (UtilityEstimate, "context_attributes"),
+        (UtilityEstimate, "source_event_ids"),
+        (ExperimentResult, "outcome_ids"),
+        (ExperimentResult, "selection_decision_ids"),
+        (ExperimentResult, "feedback_event_ids"),
+        (ExperimentResult, "utility_estimate_ids"),
+    ],
+)
+def test_serialized_sequence_fields_are_required(record_type, field):
+    payload = record_of_type(record_type).to_dict()
+    payload.pop(field)
+
+    with pytest.raises(ValueError, match=rf"^{field} is required$"):
+        record_type.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "record_type,field",
+    [
+        (TaskInputs, "profile"),
+        (SealedEvaluation, "scoring_rubric"),
+        (TaskCase, "inputs"),
+        (TaskCase, "sealed_evaluation"),
+    ],
+)
+def test_nested_wire_records_are_required(record_type, field):
+    payload = record_of_type(record_type).to_dict()
+    payload.pop(field)
+
+    with pytest.raises(ValueError, match=rf"^{field} is required$"):
+        record_type.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "record_type,field,bad_value",
+    [
+        (TaskInputs, "profile", []),
+        (TaskInputs, "candidate_context", ["not an object"]),
+        (ScoringRubric, "criteria", ["not an object"]),
+        (SealedEvaluation, "scoring_rubric", []),
+        (TaskCase, "inputs", []),
+        (TaskCase, "sealed_evaluation", "not an object"),
+        (TaskOutcome, "criterion_scores", [7]),
+    ],
+)
+def test_malformed_nested_wire_records_raise_value_error(record_type, field, bad_value):
+    payload = record_of_type(record_type).to_dict()
+    payload[field] = bad_value
+
+    with pytest.raises(ValueError, match="must be an object"):
+        record_type.from_dict(payload)
