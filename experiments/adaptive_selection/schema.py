@@ -1,33 +1,92 @@
-"""Versioned records for adaptive context-selection experiments.
+"""Versioned, immutable records for adaptive context-selection experiments.
 
-These records intentionally contain no persistence, provider, selection, or learning
-logic.  Selector-visible task inputs and sealed evaluation evidence are separate
-objects so held-out labels cannot be passed to a selector accidentally.
+This stdlib-only module contains no persistence, provider, selection, scoring, or
+learning implementation. Selector-visible task inputs and sealed evaluation evidence
+are separate objects so held-out labels cannot be passed to a selector accidentally.
+
+Held-out exact-text checks use ``" ".join(text.casefold().split())``: Unicode-aware
+case folding plus collapse of every whitespace run to one ASCII space. A selector-
+visible string is rejected when it contains the complete normalized gold answer.
+This deliberately does not detect semantic paraphrases; corpus review and dataset
+cross-split deduplication remain responsible for those.
 """
 
-from dataclasses import asdict, dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import datetime
+import math
+import re
+from types import MappingProxyType
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
 SCHEMA_VERSION = "1"
-
 T = TypeVar("T", bound="RecordMixin")
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 
 
-def _nonempty(name: str, value: str) -> None:
+def _nonempty(name: str, value: Any) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be nonempty")
 
 
-def _normalized(name: str, value: float) -> None:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError(f"{name} must be between 0 and 1")
-    if not 0.0 <= float(value) <= 1.0:
+def _finite_number(name: str, value: Any) -> float:
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+    ):
+        raise ValueError(f"{name} must be finite")
+    return float(value)
+
+
+def _range(name: str, value: Any, minimum: float, maximum: float) -> None:
+    try:
+        number = _finite_number(name, value)
+    except ValueError:
+        raise ValueError(f"{name} must be between {minimum:g} and {maximum:g}")
+    if not minimum <= number <= maximum:
+        raise ValueError(f"{name} must be between {minimum:g} and {maximum:g}")
+
+
+def _normalized(name: str, value: Any) -> None:
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+        or not 0.0 <= float(value) <= 1.0
+    ):
         raise ValueError(f"{name} must be between 0 and 1")
 
 
-def _positive(name: str, value: int) -> None:
+def _positive(name: str, value: Any) -> None:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError(f"{name} must be positive")
+
+
+def _nonnegative_integer(name: str, value: Any) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer")
+
+
+def _nonnegative_finite(name: str, value: Any) -> None:
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(float(value))
+        or value < 0
+    ):
+        raise ValueError(f"{name} must be nonnegative and finite")
+
+
+def _timestamp(name: str, value: Any) -> None:
+    if not isinstance(value, str) or not _TIMESTAMP_RE.fullmatch(value):
+        raise ValueError(f"{name} must be canonical UTC RFC 3339 ending in Z")
+    try:
+        datetime.strptime(
+            value, "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+        )
+    except ValueError:
+        raise ValueError(f"{name} must be canonical UTC RFC 3339 ending in Z")
 
 
 def _unique_nonempty(name: str, values: Tuple[str, ...]) -> None:
@@ -37,31 +96,72 @@ def _unique_nonempty(name: str, values: Tuple[str, ...]) -> None:
         raise ValueError(f"{name} must be unique")
 
 
-def _version(data: Dict[str, Any]) -> str:
+def _paired(
+    reference_name: str,
+    reference: Optional[str],
+    hash_name: str,
+    artifact_hash: Optional[str],
+) -> None:
+    if (reference is None) != (artifact_hash is None):
+        raise ValueError(f"{reference_name} and {hash_name} must be provided together")
+    if reference is not None:
+        _nonempty(reference_name, reference)
+        _nonempty(hash_name, artifact_hash)
+
+
+def _version(data: Mapping) -> str:
     if "schema_version" not in data:
         raise ValueError("schema_version is required")
     version = data["schema_version"]
     if version != SCHEMA_VERSION:
         raise ValueError(f"unsupported schema_version: {version}")
-    return version
+    return cast(str, version)
 
 
-def _json_compatible(value: Any) -> Any:
+def _freeze_json(value: Any, path: str) -> Any:
+    """Validate, defensively copy, and recursively freeze one JSON value."""
+    if value is None or type(value) in (bool, str):
+        return value
+    if type(value) is int:
+        return value
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError(f"{path} must be finite")
+        return value
+    if isinstance(value, Mapping):
+        for key in value:
+            if type(key) is not str:
+                raise ValueError(f"{path} object keys must be strings")
+        return MappingProxyType(
+            {key: _freeze_json(value[key], f"{path}.{key}") for key in sorted(value)}
+        )
+    if type(value) in (list, tuple):
+        return tuple(
+            _freeze_json(item, f"{path}[{index}]") for index, item in enumerate(value)
+        )
+    raise ValueError(f"{path} contains unsupported JSON value: {type(value).__name__}")
+
+
+def _serialize(value: Any) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _serialize(getattr(value, item.name)) for item in fields(value)
+        }
+    if isinstance(value, Mapping):
+        return {key: _serialize(value[key]) for key in sorted(value)}
     if isinstance(value, tuple):
-        return [_json_compatible(item) for item in value]
-    if isinstance(value, list):
-        return [_json_compatible(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _json_compatible(item) for key, item in value.items()}
-    return value
+        return [_serialize(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    raise TypeError(f"record contains non-serializable value: {type(value).__name__}")
 
 
-def _tuple_strings(data: Dict[str, Any], key: str) -> Tuple[str, ...]:
+def _tuple_strings(data: Mapping, key: str) -> Tuple[str, ...]:
     return tuple(data.get(key, ()))
 
 
 class RecordMixin:
-    """Common deterministic serialization for immutable experiment records."""
+    """Common deterministic JSON-compatible serialization for frozen records."""
 
     schema_version: str
 
@@ -70,10 +170,10 @@ class RecordMixin:
             raise ValueError(f"unsupported schema_version: {self.schema_version}")
 
     def to_dict(self) -> Dict[str, Any]:
-        return _json_compatible(asdict(cast(Any, self)))
+        return cast(Dict[str, Any], _serialize(self))
 
     @classmethod
-    def _from_flat_dict(cls: Type[T], data: Dict[str, Any], **changes: Any) -> T:
+    def _from_flat_dict(cls: Type[T], data: Mapping, **changes: Any) -> T:
         _version(data)
         values = dict(data)
         values.update(changes)
@@ -92,18 +192,13 @@ class TaskProfile(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
-        for name in (
-            "task_family_id",
-            "name",
-            "description",
-            "created_timestamp",
-            "provenance",
-        ):
+        for name in ("task_family_id", "name", "description", "provenance"):
             _nonempty(name, getattr(self, name))
         _positive("default_token_budget", self.default_token_budget)
+        _timestamp("created_timestamp", self.created_timestamp)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskProfile":
+    def from_dict(cls, data: Mapping) -> "TaskProfile":
         return cls._from_flat_dict(data)
 
 
@@ -116,26 +211,22 @@ class ContextItem(RecordMixin):
     confidence: float
     created_timestamp: str
     provenance: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         self._validate_version()
-        for name in (
-            "context_item_id",
-            "content",
-            "source",
-            "created_timestamp",
-            "provenance",
-        ):
+        for name in ("context_item_id", "content", "source", "provenance"):
             _nonempty(name, getattr(self, name))
         _positive("token_count", self.token_count)
         _normalized("confidence", self.confidence)
-        if not isinstance(self.metadata, dict):
+        _timestamp("created_timestamp", self.created_timestamp)
+        if not isinstance(self.metadata, Mapping):
             raise ValueError("metadata must be an object")
+        object.__setattr__(self, "metadata", _freeze_json(self.metadata, "metadata"))
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ContextItem":
+    def from_dict(cls, data: Mapping) -> "ContextItem":
         return cls._from_flat_dict(data)
 
 
@@ -153,12 +244,13 @@ class RubricCriterion(RecordMixin):
         if (
             not isinstance(self.weight, (int, float))
             or isinstance(self.weight, bool)
+            or not math.isfinite(float(self.weight))
             or self.weight <= 0
         ):
-            raise ValueError("weight must be positive")
+            raise ValueError("weight must be positive and finite")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RubricCriterion":
+    def from_dict(cls, data: Mapping) -> "RubricCriterion":
         return cls._from_flat_dict(data)
 
 
@@ -172,17 +264,20 @@ class ScoringRubric(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(self, "criteria", tuple(self.criteria))
         _nonempty("rubric_id", self.rubric_id)
         _nonempty("instructions", self.instructions)
         _nonempty("provenance", self.provenance)
         if not self.criteria:
             raise ValueError("criteria must not be empty")
+        if not all(isinstance(item, RubricCriterion) for item in self.criteria):
+            raise ValueError("criteria must contain RubricCriterion records")
         ids = tuple(item.criterion_id for item in self.criteria)
         if len(set(ids)) != len(ids):
             raise ValueError("criterion IDs must be unique")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ScoringRubric":
+    def from_dict(cls, data: Mapping) -> "ScoringRubric":
         _version(data)
         values = dict(data)
         values["criteria"] = tuple(
@@ -199,25 +294,33 @@ class TaskInputs(RecordMixin):
     task_prompt: str
     candidate_context: Tuple[ContextItem, ...]
     token_budget: int
-    visible_metadata: Dict[str, Any]
+    visible_metadata: Mapping[str, Any]
     provenance: str
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(self, "candidate_context", tuple(self.candidate_context))
         _nonempty("task_prompt", self.task_prompt)
         _nonempty("provenance", self.provenance)
         _positive("token_budget", self.token_budget)
         if not self.candidate_context:
             raise ValueError("candidate_context must not be empty")
+        if not all(isinstance(item, ContextItem) for item in self.candidate_context):
+            raise ValueError("candidate_context must contain ContextItem records")
         ids = tuple(item.context_item_id for item in self.candidate_context)
         if len(set(ids)) != len(ids):
             raise ValueError("candidate context IDs must be unique")
-        if not isinstance(self.visible_metadata, dict):
+        if not isinstance(self.visible_metadata, Mapping):
             raise ValueError("visible_metadata must be an object")
+        object.__setattr__(
+            self,
+            "visible_metadata",
+            _freeze_json(self.visible_metadata, "visible_metadata"),
+        )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskInputs":
+    def from_dict(cls, data: Mapping) -> "TaskInputs":
         _version(data)
         values = dict(data)
         values["profile"] = TaskProfile.from_dict(data["profile"])
@@ -242,6 +345,13 @@ class SealedEvaluation(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        for name in (
+            "required_context_item_ids",
+            "useful_context_item_ids",
+            "misleading_context_item_ids",
+            "irrelevant_context_item_ids",
+        ):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
         _nonempty("gold_answer", self.gold_answer)
         _nonempty("provenance", self.provenance)
         groups = (
@@ -250,22 +360,20 @@ class SealedEvaluation(RecordMixin):
             self.misleading_context_item_ids,
             self.irrelevant_context_item_ids,
         )
-        for name, values in zip(
-            (
-                "required_context_item_ids",
-                "useful_context_item_ids",
-                "misleading_context_item_ids",
-                "irrelevant_context_item_ids",
-            ),
-            groups,
-        ):
+        names = (
+            "required_context_item_ids",
+            "useful_context_item_ids",
+            "misleading_context_item_ids",
+            "irrelevant_context_item_ids",
+        )
+        for name, values in zip(names, groups):
             _unique_nonempty(name, values)
         combined = [item for group in groups for item in group]
         if len(set(combined)) != len(combined):
             raise ValueError("sealed context ID sets must be pairwise disjoint")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SealedEvaluation":
+    def from_dict(cls, data: Mapping) -> "SealedEvaluation":
         _version(data)
         values = dict(data)
         values["scoring_rubric"] = ScoringRubric.from_dict(data["scoring_rubric"])
@@ -279,28 +387,47 @@ class SealedEvaluation(RecordMixin):
         return cls(**values)
 
 
-_FORBIDDEN_HELD_OUT_METADATA_KEYS = {
-    "adaptation_feedback",
-    "feedback",
-    "gold_answer",
-    "gold_answer_text",
-    "expected_answer",
-    "scoring_rubric",
-    "required_context_item_ids",
-    "useful_context_item_ids",
-    "misleading_context_item_ids",
-    "irrelevant_context_item_ids",
-}
+_FORBIDDEN_HELD_OUT_METADATA_KEYS = frozenset(
+    {
+        "adaptation_feedback",
+        "feedback",
+        "gold_answer",
+        "gold_answer_text",
+        "expected_answer",
+        "scoring_rubric",
+        "required_context_item_ids",
+        "useful_context_item_ids",
+        "misleading_context_item_ids",
+        "irrelevant_context_item_ids",
+    }
+)
 
 
-def _metadata_contains_sealed_key(value: Any) -> bool:
-    if isinstance(value, dict):
-        if any(str(key).lower() in _FORBIDDEN_HELD_OUT_METADATA_KEYS for key in value):
+def _normalize_visible_text(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _contains_sealed_key(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        if any(
+            _normalize_visible_text(key) in _FORBIDDEN_HELD_OUT_METADATA_KEYS
+            for key in value
+        ):
             return True
-        return any(_metadata_contains_sealed_key(item) for item in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_metadata_contains_sealed_key(item) for item in value)
+        return any(_contains_sealed_key(item) for item in value.values())
+    if isinstance(value, tuple):
+        return any(_contains_sealed_key(item) for item in value)
     return False
+
+
+def _json_strings(value: Any) -> Tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Mapping):
+        return tuple(text for item in value.values() for text in _json_strings(item))
+    if isinstance(value, tuple):
+        return tuple(text for item in value for text in _json_strings(item))
+    return ()
 
 
 @dataclass(frozen=True)
@@ -316,13 +443,9 @@ class TaskCase(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
-        for name in (
-            "task_case_id",
-            "dataset_version",
-            "created_timestamp",
-            "provenance",
-        ):
+        for name in ("task_case_id", "dataset_version", "provenance"):
             _nonempty(name, getattr(self, name))
+        _timestamp("created_timestamp", self.created_timestamp)
         if self.split not in {"adaptation", "held_out"}:
             raise ValueError("split must be adaptation or held_out")
         candidate_ids = {item.context_item_id for item in self.inputs.candidate_context}
@@ -334,18 +457,34 @@ class TaskCase(RecordMixin):
         )
         if not sealed_ids.issubset(candidate_ids):
             raise ValueError("sealed context IDs must refer to candidates")
-        if self.split == "held_out" and _metadata_contains_sealed_key(
-            self.inputs.to_dict()
-        ):
-            raise ValueError(
-                "held_out selector-visible metadata contains sealed evaluation or adaptation feedback"
+        if self.split == "held_out":
+            visible_metadata = (self.inputs.visible_metadata,) + tuple(
+                item.metadata for item in self.inputs.candidate_context
             )
+            if any(_contains_sealed_key(item) for item in visible_metadata):
+                raise ValueError(
+                    "held_out selector-visible metadata contains sealed evaluation or adaptation feedback"
+                )
+            gold = _normalize_visible_text(self.sealed_evaluation.gold_answer)
+            visible_strings = (
+                (self.inputs.task_prompt,)
+                + tuple(item.content for item in self.inputs.candidate_context)
+                + tuple(
+                    text
+                    for metadata in visible_metadata
+                    for text in _json_strings(metadata)
+                )
+            )
+            if any(gold in _normalize_visible_text(text) for text in visible_strings):
+                raise ValueError(
+                    "held_out selector-visible text contains the full normalized gold answer"
+                )
 
     def selector_inputs(self) -> TaskInputs:
         return self.inputs
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskCase":
+    def from_dict(cls, data: Mapping) -> "TaskCase":
         _version(data)
         values = dict(data)
         values["inputs"] = TaskInputs.from_dict(data["inputs"])
@@ -379,6 +518,7 @@ class RunManifest(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(self, "tool_availability", tuple(self.tool_availability))
         for name in (
             "run_id",
             "experiment_version",
@@ -392,26 +532,25 @@ class RunManifest(RecordMixin):
             "prompt_template_hash",
             "config_hash",
             "code_revision",
-            "started_timestamp",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
-        if (
-            not isinstance(self.temperature, (int, float))
-            or isinstance(self.temperature, bool)
-            or self.temperature < 0
-        ):
-            raise ValueError("temperature must be nonnegative")
+        _timestamp("started_timestamp", self.started_timestamp)
+        _nonnegative_finite("temperature", self.temperature)
+        if not isinstance(self.seed_supported, bool):
+            raise ValueError("seed_supported must be boolean")
         if self.seed is not None and (
             not isinstance(self.seed, int) or isinstance(self.seed, bool)
         ):
             raise ValueError("seed must be an integer or null")
         if not self.seed_supported and self.seed is not None:
             raise ValueError("seed must be null when seed_supported is false")
+        if self.seed_supported and self.seed is None:
+            raise ValueError("seed is required when seed_supported is true")
         _unique_nonempty("tool_availability", self.tool_availability)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RunManifest":
+    def from_dict(cls, data: Mapping) -> "RunManifest":
         return cls._from_flat_dict(
             data, tool_availability=_tuple_strings(data, "tool_availability")
         )
@@ -427,30 +566,37 @@ class SelectionDecision(RecordMixin):
     total_selected_tokens: int
     token_budget: int
     selector_score: Optional[float]
+    selector_input_hash: str
+    candidate_set_hash: str
+    decision_latency_ms: float
+    ranking_artifact_reference: Optional[str]
+    ranking_artifact_hash: Optional[str]
+    trace_artifact_reference: Optional[str]
+    trace_artifact_hash: Optional[str]
     decided_timestamp: str
     provenance: str
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(
+            self, "selected_context_item_ids", tuple(self.selected_context_item_ids)
+        )
+        object.__setattr__(
+            self, "selected_token_counts", tuple(self.selected_token_counts)
+        )
         for name in (
             "decision_id",
             "run_id",
             "task_case_id",
-            "decided_timestamp",
+            "selector_input_hash",
+            "candidate_set_hash",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
+        _timestamp("decided_timestamp", self.decided_timestamp)
         _positive("token_budget", self.token_budget)
-        if any(
-            not isinstance(item, str) or not item.strip()
-            for item in self.selected_context_item_ids
-        ):
-            raise ValueError("selected context IDs must be nonempty")
-        if len(set(self.selected_context_item_ids)) != len(
-            self.selected_context_item_ids
-        ):
-            raise ValueError("selected context IDs must be unique")
+        _unique_nonempty("selected context IDs", self.selected_context_item_ids)
         if len(self.selected_context_item_ids) != len(self.selected_token_counts):
             raise ValueError("selected IDs and token counts must align")
         if any(
@@ -458,20 +604,68 @@ class SelectionDecision(RecordMixin):
             for count in self.selected_token_counts
         ):
             raise ValueError("selected token counts must be positive integers")
+        _nonnegative_integer("total_selected_tokens", self.total_selected_tokens)
+        if self.selected_context_item_ids and self.total_selected_tokens == 0:
+            raise ValueError(
+                "total_selected_tokens may be zero only when no context items are selected"
+            )
         if self.total_selected_tokens != sum(self.selected_token_counts):
             raise ValueError("total_selected_tokens must equal selected token counts")
         if self.total_selected_tokens > self.token_budget:
             raise ValueError("total_selected_tokens must not exceed token_budget")
         if self.selector_score is not None:
             _normalized("selector_score", self.selector_score)
+        _nonnegative_finite("decision_latency_ms", self.decision_latency_ms)
+        _paired(
+            "ranking_artifact_reference",
+            self.ranking_artifact_reference,
+            "ranking_artifact_hash",
+            self.ranking_artifact_hash,
+        )
+        _paired(
+            "trace_artifact_reference",
+            self.trace_artifact_reference,
+            "trace_artifact_hash",
+            self.trace_artifact_hash,
+        )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SelectionDecision":
+    def from_dict(cls, data: Mapping) -> "SelectionDecision":
         return cls._from_flat_dict(
             data,
             selected_context_item_ids=_tuple_strings(data, "selected_context_item_ids"),
             selected_token_counts=tuple(data.get("selected_token_counts", ())),
         )
+
+
+@dataclass(frozen=True)
+class CriterionScore(RecordMixin):
+    """One bounded rubric-criterion result with reproducible normalization."""
+
+    criterion_id: str
+    raw_score: float
+    max_score: float
+    normalized_score: float
+    schema_version: str = SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        self._validate_version()
+        _nonempty("criterion_id", self.criterion_id)
+        raw = _finite_number("raw_score", self.raw_score)
+        maximum = _finite_number("max_score", self.max_score)
+        _normalized("normalized_score", self.normalized_score)
+        if maximum <= 0:
+            raise ValueError("max_score must be positive")
+        if not 0 <= raw <= maximum:
+            raise ValueError("raw_score must be between 0 and max_score")
+        if not math.isclose(
+            float(self.normalized_score), raw / maximum, rel_tol=1e-9, abs_tol=1e-12
+        ):
+            raise ValueError("normalized_score must equal raw_score / max_score")
+
+    @classmethod
+    def from_dict(cls, data: Mapping) -> "CriterionScore":
+        return cls._from_flat_dict(data)
 
 
 @dataclass(frozen=True)
@@ -481,28 +675,99 @@ class TaskOutcome(RecordMixin):
     task_case_id: str
     selection_decision_id: str
     response_text: str
-    normalized_score: float
+    execution_status: str
+    raw_score: Optional[float]
+    max_score: Optional[float]
+    normalized_score: Optional[float]
+    rubric_id: str
+    scorer_id: str
+    scorer_version: str
+    scorer_hash: str
+    criterion_scores: Tuple[CriterionScore, ...]
+    evaluation_artifact_reference: Optional[str]
+    evaluation_artifact_hash: Optional[str]
+    model_input_tokens: int
+    model_output_tokens: int
+    execution_latency_ms: float
+    provider_response_hash: Optional[str]
+    error_category: Optional[str]
     completed_timestamp: str
     provenance: str
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(self, "criterion_scores", tuple(self.criterion_scores))
         for name in (
             "outcome_id",
             "run_id",
             "task_case_id",
             "selection_decision_id",
-            "response_text",
-            "completed_timestamp",
+            "rubric_id",
+            "scorer_id",
+            "scorer_version",
+            "scorer_hash",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
-        _normalized("normalized_score", self.normalized_score)
+        _timestamp("completed_timestamp", self.completed_timestamp)
+        if self.execution_status not in {"success", "failure"}:
+            raise ValueError("execution_status must be success or failure")
+        if self.execution_status == "success":
+            _nonempty("response_text", self.response_text)
+            if self.error_category is not None:
+                raise ValueError("error_category must be null for success")
+        else:
+            if self.error_category is None:
+                raise ValueError("error_category is required for failure")
+            _nonempty("error_category", self.error_category)
+        score_values = (self.raw_score, self.max_score, self.normalized_score)
+        if any(value is None for value in score_values) and not all(
+            value is None for value in score_values
+        ):
+            raise ValueError(
+                "raw_score, max_score, and normalized_score must be provided together"
+            )
+        if all(value is not None for value in score_values):
+            raw = _finite_number("raw_score", self.raw_score)
+            maximum = _finite_number("max_score", self.max_score)
+            _normalized("normalized_score", self.normalized_score)
+            if maximum <= 0:
+                raise ValueError("max_score must be positive")
+            if not 0 <= raw <= maximum:
+                raise ValueError("raw_score must be between 0 and max_score")
+            if not math.isclose(
+                cast(float, self.normalized_score),
+                raw / maximum,
+                rel_tol=1e-9,
+                abs_tol=1e-12,
+            ):
+                raise ValueError("normalized_score must equal raw_score / max_score")
+        if not all(isinstance(item, CriterionScore) for item in self.criterion_scores):
+            raise ValueError("criterion_scores must contain CriterionScore records")
+        ids = tuple(item.criterion_id for item in self.criterion_scores)
+        if len(set(ids)) != len(ids):
+            raise ValueError("criterion IDs must be unique")
+        _paired(
+            "evaluation_artifact_reference",
+            self.evaluation_artifact_reference,
+            "evaluation_artifact_hash",
+            self.evaluation_artifact_hash,
+        )
+        _nonnegative_integer("model_input_tokens", self.model_input_tokens)
+        _nonnegative_integer("model_output_tokens", self.model_output_tokens)
+        _nonnegative_finite("execution_latency_ms", self.execution_latency_ms)
+        if self.provider_response_hash is not None:
+            _nonempty("provider_response_hash", self.provider_response_hash)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskOutcome":
-        return cls._from_flat_dict(data)
+    def from_dict(cls, data: Mapping) -> "TaskOutcome":
+        _version(data)
+        values = dict(data)
+        values["criterion_scores"] = tuple(
+            CriterionScore.from_dict(item) for item in data.get("criterion_scores", ())
+        )
+        return cls(**values)
 
 
 FEEDBACK_SOURCES = frozenset({"oracle", "simulated", "human", "judge"})
@@ -513,13 +778,22 @@ FEEDBACK_SIGNAL_TYPES = frozenset(
 
 @dataclass(frozen=True)
 class FeedbackEvent(RecordMixin):
+    """Feedback with one unambiguous encoding.
+
+    Numeric context_utility, preference, and correction values are signed in [-1, 1];
+    task_score and selection_quality are normalized in [0, 1]. A non-null canonical
+    JSON structured_value may be used instead of, never alongside, numeric_value.
+    Correction signals additionally require a category and replacement/explanatory
+    correction text; those fields are forbidden for every other signal.
+    """
+
     event_id: str
     run_id: str
     task_case_id: str
     task_family_id: str
     signal_type: str
     numeric_value: Optional[float]
-    structured_category: Optional[str]
+    structured_value: Any
     affected_context_item_ids: Tuple[str, ...]
     correction_category: Optional[str]
     correction_text: Optional[str]
@@ -530,33 +804,52 @@ class FeedbackEvent(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(
+            self, "affected_context_item_ids", tuple(self.affected_context_item_ids)
+        )
         for name in (
             "event_id",
             "run_id",
             "task_case_id",
             "task_family_id",
-            "occurred_timestamp",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
+        _timestamp("occurred_timestamp", self.occurred_timestamp)
         if self.signal_type not in FEEDBACK_SIGNAL_TYPES:
             raise ValueError(
                 f"signal_type must be one of {sorted(FEEDBACK_SIGNAL_TYPES)}"
             )
         if self.source not in FEEDBACK_SOURCES:
             raise ValueError(f"source must be one of {sorted(FEEDBACK_SOURCES)}")
-        if self.numeric_value is None and self.structured_category is None:
-            raise ValueError("feedback requires numeric_value or structured_category")
+        if (self.numeric_value is None) == (self.structured_value is None):
+            raise ValueError(
+                "feedback requires exactly one of numeric_value or structured_value"
+            )
         if self.numeric_value is not None:
-            _normalized("numeric_value", self.numeric_value)
-        for name in ("structured_category", "correction_category", "correction_text"):
-            value = getattr(self, name)
-            if value is not None:
-                _nonempty(name, value)
+            if self.signal_type in {"task_score", "selection_quality"}:
+                _range("numeric_value", self.numeric_value, 0, 1)
+            else:
+                _range("numeric_value", self.numeric_value, -1, 1)
+        else:
+            object.__setattr__(
+                self,
+                "structured_value",
+                _freeze_json(self.structured_value, "structured_value"),
+            )
+        if self.signal_type == "correction":
+            for name in ("correction_category", "correction_text"):
+                if getattr(self, name) is None:
+                    raise ValueError(f"correction requires {name}")
+                _nonempty(name, getattr(self, name))
+        elif self.correction_category is not None or self.correction_text is not None:
+            raise ValueError(
+                "correction-only fields must be null for non-correction signals"
+            )
         _unique_nonempty("affected_context_item_ids", self.affected_context_item_ids)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "FeedbackEvent":
+    def from_dict(cls, data: Mapping) -> "FeedbackEvent":
         return cls._from_flat_dict(
             data,
             affected_context_item_ids=_tuple_strings(data, "affected_context_item_ids"),
@@ -565,7 +858,7 @@ class FeedbackEvent(RecordMixin):
 
 @dataclass(frozen=True)
 class UtilityEstimate(RecordMixin):
-    """An estimate over context attributes, derived from raw feedback events."""
+    """A signed utility estimate over context attributes, derived from feedback."""
 
     utility_estimate_id: str
     task_family_id: str
@@ -580,15 +873,17 @@ class UtilityEstimate(RecordMixin):
 
     def __post_init__(self) -> None:
         self._validate_version()
+        object.__setattr__(self, "context_attributes", tuple(self.context_attributes))
+        object.__setattr__(self, "source_event_ids", tuple(self.source_event_ids))
         for name in (
             "utility_estimate_id",
             "task_family_id",
             "estimator_version",
-            "estimated_timestamp",
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
-        _normalized("estimated_utility", self.estimated_utility)
+        _timestamp("estimated_timestamp", self.estimated_timestamp)
+        _range("estimated_utility", self.estimated_utility, -1, 1)
         _normalized("confidence", self.confidence)
         _unique_nonempty("source_event_ids", self.source_event_ids)
         if not self.source_event_ids:
@@ -598,7 +893,7 @@ class UtilityEstimate(RecordMixin):
             raise ValueError("context_attributes must not be empty")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UtilityEstimate":
+    def from_dict(cls, data: Mapping) -> "UtilityEstimate":
         return cls._from_flat_dict(
             data,
             context_attributes=_tuple_strings(data, "context_attributes"),
@@ -623,12 +918,15 @@ class ExperimentResult(RecordMixin):
     def __post_init__(self) -> None:
         self._validate_version()
         for name in (
-            "experiment_result_id",
-            "run_id",
-            "completed_timestamp",
-            "provenance",
+            "outcome_ids",
+            "selection_decision_ids",
+            "feedback_event_ids",
+            "utility_estimate_ids",
         ):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
+        for name in ("experiment_result_id", "run_id", "provenance"):
             _nonempty(name, getattr(self, name))
+        _timestamp("completed_timestamp", self.completed_timestamp)
         for name in (
             "outcome_ids",
             "selection_decision_ids",
@@ -638,7 +936,7 @@ class ExperimentResult(RecordMixin):
             _unique_nonempty(name, getattr(self, name))
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ExperimentResult":
+    def from_dict(cls, data: Mapping) -> "ExperimentResult":
         changes = {
             key: _tuple_strings(data, key)
             for key in (
