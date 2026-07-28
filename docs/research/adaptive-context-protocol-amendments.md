@@ -4,7 +4,9 @@ This append-only record accompanies the [adaptive context charter](adaptive-cont
 
 ## 2026-07-28 — Protocol 1.0 to 1.1-draft
 
-- **Author:** project research team, incorporating independent methods review
+- **Accountable author:** Andrew (Drew) Hamilton, project owner
+- **Drafting and implementation support:** Hermes Agent
+- **Review:** independent delegated scientific-methods and documentation-quality reviewers
 - **Status:** prospective draft amendment
 - **Timing:** made before corpus authoring or sealing, model execution, or access to any adaptation or held-out outcomes
 - **Effect:** protocol 1.1-draft prospectively supersedes 1.0 for future work; protocol 1.0 remains audit-visible in commit history. Confirmatory execution is prohibited until all open decisions and the sensitivity/power simulation are resolved and a later version is frozen.

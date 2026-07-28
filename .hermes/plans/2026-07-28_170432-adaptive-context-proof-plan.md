@@ -1,6 +1,6 @@
 # Adaptive Context Proof Experiment Implementation Plan
 
-> **For Hermes:** Use the `subagent-driven-development` skill to implement this plan task-by-task. Do not begin implementation until the experiment charter and continuation gates are approved.
+> **For Hermes:** Use the `subagent-driven-development` skill to implement this plan task-by-task. Schema work, append-only persistence, and tiny deterministic Stage 0 integrity fixtures may proceed while protocol 1.1 remains draft. Engineering defaults must not resolve open scientific decisions. Do not seal the full corpus, execute a real-model trial, or perform confirmatory analysis until the protocol, continuation rule, baseline lock, scoring plan, and sensitivity simulation are approved and frozen.
 
 > **Scientific interpretation:** The [protocol 1.1-draft charter](../../docs/research/adaptive-context-charter.md) is normative for hypotheses, units, estimands, confirmatory boundaries, gates, safety, leakage controls, and stage-specific claims. The [amendment record](../../docs/research/adaptive-context-protocol-amendments.md) explains prospective changes from 1.0, and [ADR 0003](../../docs/decisions/0003-strong-static-selection-is-primary-baseline.md) governs the one-baseline lock. If this implementation plan conflicts with the charter, follow the charter and amend the plan; do not infer a scientific decision from an implementation default.
 
@@ -196,7 +196,7 @@ Do not assign equal credit to every selected item after a successful run and cal
 - Create: `docs/research/adaptive-context-evaluation.md`
 - Create: `docs/decisions/0001-use-existing-repo-for-pilot.md`
 - Create: `docs/decisions/0002-feedback-is-event-data-not-truth.md`
-- Create: `docs/decisions/0003-primary-baseline-is-strong-static-selection.md`
+- Create: `docs/decisions/0003-strong-static-selection-is-primary-baseline.md`
 
 ### Experimental harness
 
@@ -456,37 +456,58 @@ The confirmatory report contains one quality non-inferiority endpoint and, condi
 
 **Exit criterion:** The harness detects a deliberately introduced adaptive advantage and a deliberately introduced false advantage/leakage defect.
 
-### Task 12: Author and review the full DevOps corpus
+### Task 12: Author development and adaptation material
 
-**Objective:** Build 64 realistic cases without using held-out results to tune the selector.
+**Objective:** Build and independently review the development/adaptation material needed to choose policies without creating or inspecting confirmatory held-out cases.
+
+**Files:**
+- Create: `experiments/adaptive_selection/datasets/devops_v1_development.json`
+- Create: `docs/research/adaptive-context-evaluation.md`
+
+1. Author the five ordered adaptation cases for each family plus any separately labeled development fixtures needed for policy selection.
+2. Assign scenario-template/provenance groups and run exact and near-duplicate checks.
+3. Obtain domain review, without selector results, for correctness, required evidence, distractors, rubrics, and unsafe recommendations.
+4. Define the static-policy candidate set, development criterion, deterministic tie-breaker, and equal tuning budget for static and adaptive development.
+5. Retain all candidate-policy development results and reviewer records. Do not author confirmatory held-out cases yet.
+
+### Task 13: Lock the policy and freeze the protocol
+
+**Objective:** Resolve the scientific design prospectively, select exactly one primary static policy, and freeze the feature/policy definitions before held-out authoring.
+
+**Steps:**
+1. Run the preregistered sensitivity/power simulation and resolve every open item in the draft charter.
+2. Select exactly one primary static policy using only development/adaptation material, the predefined criterion, and the deterministic tie-breaker.
+3. Retain evidence of comparable tuning opportunity and the complete candidate-policy results.
+4. Freeze the feature ontology, adaptive-policy specification, primary static policy, rubric/scoring specification, provider/model plan, repetition/order plan, safety taxonomy, and continuation rule.
+5. Publish a new prospective protocol version with an audit entry. Do not proceed if the simulation shows that the intended claim is not distinguishable with eight trajectories.
+
+### Task 14: Author, review, and seal held-out cases
+
+**Objective:** Complete the 64-case corpus only after policy lock, without using held-out material to tune either selector.
 
 **Files:**
 - Create: `experiments/adaptive_selection/datasets/devops_v1.json`
-- Create: `docs/research/adaptive-context-evaluation.md`
 
-Use provenance-group splitting, duplicate/near-duplicate detection, and independent review:
+1. Author three held-out cases per family under the frozen feature ontology and policy specification; use separate held-out authors if the frozen protocol requires them.
+2. Require independent domain review without selector results.
+3. Verify provenance-group separation, no exact or near duplicates, balanced distractors, unseen held-out IDs, and comparable within-family difficulty.
+4. Hash and seal prompts, candidate pools, labels, rubrics, scoring rules, provenance-group splits, reviewer records, and the finalized corpus.
+5. Treat any post-seal change as a new dataset/protocol version; never silently edit `devops_v1`.
 
-1. Authoring protection: freeze the feature ontology and adaptive policy before held-out authoring, or assign separate held-out authors; record which approach was used.
-2. Independent domain review, without selector results: correctness, realistic failure mode, required evidence, distractors, rubrics, and unsafe recommendations.
-3. Experimental review: no provenance/template leakage, no duplicate or near-duplicate content, balanced distractors, distinct held-out IDs, and comparable difficulty across families.
+### Task 15: Run the frozen-model pilot
 
-Hash and seal prompts, candidate pools, labels, rubrics, scoring rules, provenance-group splits, and the finalized corpus. Changes after freeze create `devops_v2.json`; do not silently edit v1.
-
-### Task 13: Run the frozen-model pilot
-
-**Objective:** Compare all modes with a real model under identical conditions.
+**Objective:** Compare the two primary modes with a real model under identical conditions after protocol and corpus freeze.
 
 **Steps:**
 1. Pin the provider/model and record the complete manifest.
-2. Select exactly one primary static policy on development/adaptation data using the predefined criterion and tie-breaker; retain proof of comparable tuning opportunity.
-3. Seal code/config, policy, corpus components, splits, rubrics, and scoring rules before model execution.
-4. Run matched adaptive and locked-static repetitions in randomized/interleaved order, stateless except for explicit adaptive state, resetting that state between families.
-5. Run references and other baselines only as secondary/exploratory conditions.
-6. Score randomized opaque outputs with scorers blinded to mode, traces, filenames, run order, and labels; use two humans as preregistered.
-7. Run the family-clustered/hierarchical sequential analysis and only predeclared gate ablations.
-8. Record negative and ambiguous findings without rewriting the gate.
+2. Confirm the locked primary static policy, protocol, corpus, code/config, rubrics, and scoring rules match their sealed hashes.
+3. Run matched adaptive and locked-static repetitions in randomized/interleaved order, stateless except for explicit adaptive state, resetting that state between families.
+4. Run references and other baselines only as secondary/exploratory conditions.
+5. Score randomized opaque outputs with scorers blinded to mode, traces, filenames, run order, and labels; use two humans as preregistered.
+6. Run the family-clustered/hierarchical sequential analysis and only predeclared gate ablations.
+7. Record negative and ambiguous findings without rewriting the gate.
 
-### Task 14: Make the continuation decision
+### Task 16: Make the continuation decision
 
 **Objective:** Decide what, if anything, should be built next.
 
