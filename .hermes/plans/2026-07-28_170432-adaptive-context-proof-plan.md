@@ -2,7 +2,9 @@
 
 > **For Hermes:** Use the `subagent-driven-development` skill to implement this plan task-by-task. Do not begin implementation until the experiment charter and continuation gates are approved.
 
-**Goal:** Determine whether feedback-informed context selection improves recurring-task outcomes on held-out cases compared with strong static selection, without meaningful quality loss.
+> **Scientific interpretation:** The [protocol 1.1-draft charter](../../docs/research/adaptive-context-charter.md) is normative for hypotheses, units, estimands, confirmatory boundaries, gates, safety, leakage controls, and stage-specific claims. The [amendment record](../../docs/research/adaptive-context-protocol-amendments.md) explains prospective changes from 1.0, and [ADR 0003](../../docs/decisions/0003-strong-static-selection-is-primary-baseline.md) governs the one-baseline lock. If this implementation plan conflicts with the charter, follow the charter and amend the plan; do not infer a scientific decision from an implementation default.
+
+**Goal:** Determine whether feedback-informed context selection preserves downstream quality versus one locked strong static policy and, only after that guard passes, reduces input-context tokens on held-out cases after a fixed adaptation curriculum.
 
 **Architecture:** Keep `ai-context-manager` as the experimental substrate rather than creating a new repository now. Reuse its explainable retrieval, token budgeting, memory lifecycle, provenance, hybrid scoring, storage, and evaluation code; add an isolated research harness under `experiments/adaptive_selection/`. Promote code into the core package—or extract a new runtime—only after the experiment produces repeatable evidence.
 
@@ -56,16 +58,19 @@ For the pilot, do not build a SaaS UI, MCP gateway, agent orchestrator, autonomo
 
 ## 2. Experiment charter
 
-### Primary hypothesis
+### Sequential confirmatory hypotheses
 
-For recurring infrastructure-analysis tasks, feedback-informed context ranking will outperform the strongest static selector on held-out cases from known task families under the same token budget.
+After a fixed five-case adaptation history in each family, first establish adaptive task-quality non-inferiority versus exactly one prospectively locked strong static policy. Only if that guard passes, test superiority on one primary efficiency endpoint: input-context tokens. The independent units are the eight task-family learning trajectories; cases are clustered within family and generations are nested measurements.
+
+The exact estimand is the equal-family-weighted mean paired adaptive-minus-locked-static difference, aggregating generations within held-out case and cases within family. The provisional quality margin is `-0.03`, but it is not accepted until the rubric scale/weights and pre-freeze sensitivity/power simulation justify it. The frozen protocol must specify whether the guard uses a conservative uncertainty bound or an explicitly heuristic continuation rule.
 
 ### Secondary hypotheses
 
-1. Adaptive selection reduces irrelevant context and repeated corrections.
-2. Adaptive selection can reduce input tokens without materially reducing task quality.
-3. Learned utility transfers to unseen cases and unseen context-item IDs within a known task family.
-4. Feature-level learning performs better than memorizing component IDs.
+1. Adaptive selection improves quality, reduces corrections, or reduces irrelevant/misleading context.
+2. Learned utility transfers to unseen cases and unseen context-item IDs within a known task family.
+3. Feature-level learning performs better than memorizing component IDs.
+
+Correction rate is secondary/descriptive and cannot replace the input-token endpoint. Quality superiority is also secondary.
 
 ### Falsification conditions
 
@@ -75,19 +80,20 @@ The thesis is weakened or rejected for this design if any of the following persi
 - Gains disappear when component IDs are replaced on held-out cases.
 - Static metadata/rules account for essentially all improvement.
 - Feedback helps adaptation cases but not held-out cases.
-- Improvement is concentrated in one task family rather than recurring across families.
+- Effects are too unstable across family trajectories to support the scoped claim.
 - Natural feedback is too sparse or ambiguous to produce stable utility estimates.
 - Results change direction across repeated runs with the frozen model configuration.
 
 ### Provisional continuation gate
 
-Lock the final gate before viewing held-out results. A reasonable pilot gate is:
+Lock the final gate before corpus sealing or model execution. The draft sequence is:
 
-- Mean adaptive quality is no worse than 0.03 below the best static baseline.
-- Adaptive selection improves either correction rate or input-token use by at least 20% relative to the best static baseline.
-- There is no increase in critical/safety-related failures.
-- Improvement is visible in at least five of eight task families.
-- A component-ID ablation shows that the result is not primarily memorization.
+1. Pass the predeclared quality non-inferiority rule against the one locked static policy; otherwise stop the confirmatory sequence.
+2. Only then pass the predeclared superiority rule for input-context tokens. Corrections cannot substitute.
+3. Satisfy the separately preregistered zero-tolerance severe/critical safety guardrail; manually review every such event and stop on declared triggers. Do not claim statistical safety equivalence.
+4. If retained before freeze, pass the component-ID/ID-renaming ablation.
+
+Raw effects for all eight families, their median/range, and family-direction counts are mandatory descriptive reporting, not eight confirmatory tests or an unqualified five-of-eight gate. The exact token threshold and quality decision rule remain open pending simulation.
 
 Treat this as a **continue-investigating** threshold, not proof of a company or broad organizational learning.
 
@@ -98,6 +104,8 @@ Treat this as a **continue-investigating** threshold, not proof of a company or 
 ### Corpus
 
 Create eight recurring task families with eight cases each: 64 total cases, split within each family into five ordered adaptation cases and three held-out cases (40 adaptation, 24 held out).
+
+Predeclare the exact five-case adaptation order in every family and reset learned utility state between families. Primary claims apply only to that curriculum; record family execution order. Split at scenario-template/provenance-group level rather than ID alone, detect exact and near duplicates across splits using normalized content hashes, and preserve the review log. Freeze feature ontology and adaptive policy before held-out authoring or use separate held-out authors, recording the chosen protection.
 
 Suggested families:
 
@@ -127,6 +135,8 @@ Each case must include:
 
 Use synthetic-but-realistic infrastructure cases first so ground truth is controlled. Use `bourbon_research` later as naturalistic dogfood, not as the primary proof corpus: changing web sources and subjective narrative quality make it a poor first controlled benchmark.
 
+An independent domain reviewer who cannot see selector results must review required evidence, distractors, expected conclusions, unsafe actions, and rubrics. Hash and seal prompts, candidate pools, labels, rubrics, scoring rules, provenance-group splits, and manifests.
+
 ### Execution modes
 
 All comparable selectors receive the same task, candidates, token budget, model, system prompt, and generation settings.
@@ -134,19 +144,22 @@ All comparable selectors receive the same task, candidates, token budget, model,
 1. **Reference: full eligible context** — establishes the high-token reference and reveals attention dilution; not the primary fairness baseline.
 2. **Baseline A: static explainable selector** — existing query relevance, lifecycle filters, metadata, recency, and fixed importance weights.
 3. **Baseline B: similarity/top-K** — semantic or deterministic fixture similarity under the same token budget.
-4. **Baseline C: strong static rules + metadata** — the strongest non-learning selector; this is the primary baseline to beat.
+4. **Baseline C: locked strong static rules + metadata** — exactly one non-learning selector chosen on development/adaptation information using a predefined criterion and deterministic tie-breaker; this is the sole primary baseline.
 5. **Candidate D: adaptive selector** — the same static features plus utility learned only from prior adaptation feedback.
 
-Do not give the adaptive selector richer metadata or a larger budget than the baselines.
+Do not give the adaptive selector richer metadata or a larger budget than the baselines. Give static and adaptive development comparable metadata access, engineering effort, reviewer access, and tuning/search opportunity. Alternative baselines and static candidates are secondary/exploratory.
 
 ### Staged learning
 
-- **Stage 1: oracle feedback** — use corpus relevance/outcome labels to verify the learning and evaluation plumbing.
-- **Stage 2: simulated behavioral feedback** — emit correction/acceptance signals from deterministic rubric outcomes.
-- **Stage 3: model execution** — run a frozen model and score outputs blind to selector mode.
-- **Stage 4: naturalistic dogfood** — use real Andrew feedback in a bounded `bourbon_research` or infrastructure workflow.
+- **Stage 0: tiny deterministic fixtures** — verify schema, ordering, state reset, controls, leakage detection, scorer mechanics, and report reconstruction; this cannot establish empirical benefit.
+- **Stage 1: oracle feedback** — use selector-independent locked corpus labels to verify learning under constructed assumptions; this cannot establish learnability from behavioral feedback.
+- **Stage 2: simulated behavioral feedback** — use selector-independent locked signals from a declared noise model; this cannot validate that noise model against human feedback.
+- **Stage 3: frozen-model synthetic execution** — estimate effects for one sealed synthetic domain, provider revision, and curriculum with blinded scoring; this cannot establish production value, natural-feedback causality, unseen-domain transfer, or safety.
+- **Stage 4: naturalistic dogfood** — use policy-dependent model/human feedback in a bounded workflow and label it as an online trajectory; absent a separate preregistration, this can expose workflow failures but cannot confirm the synthetic result.
 
 A stage must pass its integrity checks before moving to the next.
+
+Include no-effect controls, misleading shared-feature controls, feature perturbations, template/provenance ablations, and the ID-renaming ablation if retained. Oracle/simulated feedback must be identical regardless of selector behavior; natural feedback is policy-dependent and estimates a different trajectory.
 
 ### Initial adaptive policy
 
@@ -224,21 +237,23 @@ Do not assign equal credit to every selected item after a successful run and cal
 
 ## 5. Implementation tasks
 
-### Task 1: Write and approve the experiment charter
+### Task 1: Resolve and freeze the draft experiment charter
 
-**Objective:** Freeze the hypothesis, primary metric, baselines, corpus split, continuation gate, and falsification criteria before implementation can bias the design.
+**Objective:** Resolve protocol 1.1-draft's open decisions and simulation before freezing hypotheses, endpoints, one primary baseline, corpus split, sequential gate, and falsification criteria. Confirmatory execution is prohibited while the charter remains draft.
 
 **Files:**
 - Create: `docs/research/adaptive-context-charter.md`
+- Create: `docs/research/adaptive-context-protocol-amendments.md`
 - Create: `docs/decisions/0001-use-existing-repo-for-pilot.md`
 
 **Steps:**
-1. Copy the charter in Sections 2–3 into the project document.
-2. Resolve the open questions in Section 8 below.
-3. Mark the charter `status: preregistered` with a dataset version.
-4. Commit only the charter and ADR.
+1. Treat the linked charter as normative and preserve amendments prospectively.
+2. Freeze the rubric scale/weights and candidate family-clustered or hierarchical analysis.
+3. Preregister and run a sensitivity/power simulation over plausible family, case, and generation variation; report detectable family-level effects and three-versus-five repetition behavior without conventional p-value theater.
+4. Resolve every open question in the charter, including the non-inferiority rule, token threshold, repetitions, scoring, safety stops, static tie-breaker, order, and leakage controls.
+5. Review the resulting frozen version before any corpus sealing or model execution.
 
-**Verification:** A reviewer can identify the primary hypothesis, strongest baseline, held-out set, continuation gate, and stopping conditions without reading code.
+**Verification:** A reviewer can identify the eight independent units, exact estimands, sole primary contrast, sequential endpoints, simulation justification, held-out set, safety stops, and exploratory boundary without reading code.
 
 ### Task 2: Define versioned experiment records
 
@@ -352,6 +367,8 @@ Start with smoothed mean rewards using configurable priors and minimum evidence 
 
 Score required diagnostic steps, critical omissions, false claims, prohibited actions, correction count, and rubric total. Keep retrieval precision/NDCG as diagnostic metrics, not the primary task-quality result.
 
+Blind scorers to mode, traces, filenames, run order, and condition labels; randomize presentation. Calibrate rubrics on development cases only. Use two independent human scorers for a predeclared substantial stratified subset and every critical judgment, and report agreement/adjudication. Keep LLM judging exploratory unless prospectively validated against blinded humans. Test deterministic scoring against paraphrases and adversarial wording, not only keywords.
+
 **Verification:** The scorer penalizes an unsafe or technically wrong answer even if it retrieved nominally relevant context.
 
 ### Task 8: Add frozen model adapters and run manifests
@@ -363,6 +380,8 @@ Score required diagnostic steps, critical omissions, false claims, prohibited ac
 - Test: `tests/adaptive_selection/test_runner.py`
 
 Implement a provider protocol and a deterministic fake provider first. A real provider adapter must record provider, exact model identifier, prompt/template hash, temperature, seed where supported, tool availability, timestamps, token accounting, and raw response hash.
+
+For the primary adaptive/static modes, support five matched repetitions (minimum three if cost-constrained; final count resolved before freeze), randomized/interleaved execution, stateless generations, disabled uncontrolled memory/caches, provider revision/time capture, and predeclared aggregation. Repetitions are nested measurements, not new independent units.
 
 **Verification:** Rerunning the fake provider reproduces byte-identical outputs and manifests. The harness refuses to compare runs with incompatible manifests unless explicitly overridden and labeled invalid for primary comparison.
 
@@ -384,13 +403,13 @@ python -m experiments.adaptive_selection.cli run --mode adaptive --dataset ... -
 python -m experiments.adaptive_selection.cli compare --left ... --right ...
 ```
 
-The adaptive run may learn only from feedback revealed after each adaptation case. Held-out feedback remains sealed until selection and generation are complete.
+The adaptive run may learn only from selector-independent locked feedback revealed after each adaptation case in the fixed predeclared within-family order. Reset utility state between families and record family order. Held-out feedback remains sealed until selection and generation are complete. Natural/model-human feedback must use a separately labeled policy-dependent online trajectory.
 
 **Verification:** A leakage test deliberately places the answer in held-out feedback and confirms it cannot influence selection.
 
 ### Task 10: Produce paired reports and uncertainty estimates
 
-**Objective:** Report whether the adaptive mode beat the strongest baseline and why.
+**Objective:** Report the sequential adaptive-versus-one-locked-static decision and why, without pseudoreplication.
 
 **Files:**
 - Create: `experiments/adaptive_selection/report.py`
@@ -406,12 +425,15 @@ Report overall and per-family:
 - context precision/recall;
 - irrelevant and misleading context selected;
 - latency and estimated cost;
-- paired differences;
-- bootstrap confidence intervals;
+- equal-family-weighted paired differences after the fixed five-case history;
+- family-clustered/hierarchical coarse uncertainty intervals, never an independent 24-case bootstrap;
+- all eight raw family effects plus median and range;
 - feature-level versus ID-local ablation;
 - failures and negative results.
 
 Do not collapse everything into a single vanity score.
+
+The confirmatory report contains one quality non-inferiority endpoint and, conditional on its passage, one input-token superiority endpoint. Correction rate is secondary/descriptive. Other selectors, heterogeneity tests, retrieval metrics, latency/cost, feature analyses, alternate weights, and non-gate ablations are exploratory. Per-family effects are descriptive, not eight confirmatory tests.
 
 ### Task 11: Run an end-to-end deterministic pilot
 
@@ -442,12 +464,13 @@ Do not collapse everything into a single vanity score.
 - Create: `experiments/adaptive_selection/datasets/devops_v1.json`
 - Create: `docs/research/adaptive-context-evaluation.md`
 
-Use a two-pass review:
+Use provenance-group splitting, duplicate/near-duplicate detection, and independent review:
 
-1. Domain review: correctness, realistic failure mode, required evidence, and unsafe recommendations.
-2. Experimental review: no leakage, balanced distractors, distinct held-out IDs, and comparable difficulty across families.
+1. Authoring protection: freeze the feature ontology and adaptive policy before held-out authoring, or assign separate held-out authors; record which approach was used.
+2. Independent domain review, without selector results: correctness, realistic failure mode, required evidence, distractors, rubrics, and unsafe recommendations.
+3. Experimental review: no provenance/template leakage, no duplicate or near-duplicate content, balanced distractors, distinct held-out IDs, and comparable difficulty across families.
 
-Hash and version the finalized corpus. Changes after preregistration create `devops_v2.json`; do not silently edit v1.
+Hash and seal prompts, candidate pools, labels, rubrics, scoring rules, provenance-group splits, and the finalized corpus. Changes after freeze create `devops_v2.json`; do not silently edit v1.
 
 ### Task 13: Run the frozen-model pilot
 
@@ -455,12 +478,12 @@ Hash and version the finalized corpus. Changes after preregistration create `dev
 
 **Steps:**
 1. Pin the provider/model and record the complete manifest.
-2. Run the full-context reference and all three baselines.
-3. Identify the strongest static baseline on the adaptation/validation data only.
-4. Run the adaptive mode in ordered adaptation.
-5. Seal code/config before evaluating held-out outputs.
-6. Score outputs blinded to selector mode where human judgment is required.
-7. Run paired analysis and all ablations.
+2. Select exactly one primary static policy on development/adaptation data using the predefined criterion and tie-breaker; retain proof of comparable tuning opportunity.
+3. Seal code/config, policy, corpus components, splits, rubrics, and scoring rules before model execution.
+4. Run matched adaptive and locked-static repetitions in randomized/interleaved order, stateless except for explicit adaptive state, resetting that state between families.
+5. Run references and other baselines only as secondary/exploratory conditions.
+6. Score randomized opaque outputs with scorers blinded to mode, traces, filenames, run order, and labels; use two humans as preregistered.
+7. Run the family-clustered/hierarchical sequential analysis and only predeclared gate ablations.
 8. Record negative and ambiguous findings without rewriting the gate.
 
 ### Task 14: Make the continuation decision
@@ -493,8 +516,8 @@ Only after a repeatable positive result should the team decide whether to:
 | Learning | Held-out IDs benefit from shared features, not hidden ID leakage |
 | Scoring | Technical failures override retrieval success |
 | Reproducibility | Provider, prompt, corpus, policy, and code versions are recorded |
-| Comparison | Paired results, per-family effects, uncertainty, and ablations are reported |
-| Scientific integrity | Gates are fixed before held-out evaluation |
+| Comparison | Eight family-trajectory effects, equal-family estimands, coarse clustered/hierarchical uncertainty, and mandatory descriptive family summaries are reported |
+| Scientific integrity | Draft decisions and sensitivity/power simulation are resolved before freeze; gates, corpus, and scoring are sealed before model execution |
 | Operational integrity | Existing repository tests continue to pass |
 
 ---
@@ -511,7 +534,7 @@ Mitigation: begin with oracle labels; later use paired/leave-one-item-out tests 
 
 ### Baseline sandbagging
 
-Mitigation: designate strong static rules + metadata as the primary baseline. Keep budgets and candidate pools identical.
+Mitigation: lock exactly one strong static rules + metadata policy using development/adaptation data, a predefined criterion, and deterministic tie-breaker. Keep budgets, candidate pools, metadata access, and tuning opportunity comparable.
 
 ### Overfitting and memorization
 
@@ -519,11 +542,11 @@ Mitigation: held-out cases use new component IDs; include feature-only and ID-lo
 
 ### Model nondeterminism and drift
 
-Mitigation: freeze configuration, store manifests and hashes, use repeated runs, and do not combine incompatible model versions.
+Mitigation: freeze configuration, store provider revision/time and manifests/hashes, use five matched repetitions (minimum three), randomize/interleave primary modes statelessly with uncontrolled memory/caches disabled, predeclare aggregation, and do not combine incompatible model versions. Repetitions do not increase the eight-unit sample size.
 
 ### Corpus author bias
 
-Mitigation: separate authoring and review, preregister the dataset, and include misleading as well as irrelevant context.
+Mitigation: split by scenario-template/provenance group, detect duplicates/near duplicates, freeze ontology/policy before held-out authoring or use separate authors, require independent domain review without selector results, seal every corpus/scoring component, and include misleading as well as irrelevant context.
 
 ### Premature product architecture
 
@@ -535,18 +558,23 @@ Mitigation: revise “enterprise-grade,” “proving feedback,” and unsupport
 
 ---
 
-## 8. Open questions to settle before implementation
+## 8. Open questions to settle before protocol freeze
 
 1. Which model/provider should be frozen for the first real trial?
-2. Should quality scoring be fully deterministic, human-reviewed, model-judged, or a predeclared combination?
-3. Is a 20% relative efficiency/correction improvement the right continuation threshold?
-4. Which of the proposed eight DevOps task families, if any, should be replaced before corpus authoring?
-5. After the controlled pilot, which bounded `bourbon_research` workflow should be used for the first naturalistic dogfood comparison?
-6. What feedback categories should require explicit human confirmation before becoming reusable experience?
-7. Which experiment artifacts may be committed, and which may contain sensitive prompts or provider outputs and must remain local?
+2. Will primary modes use three or five repetitions, and what exact matching/interleaving/aggregation applies?
+3. What frozen rubric scale/weights, human-scoring subset, agreement/adjudication rule, and deterministic/human blend apply? What criterion, if any, validates an LLM judge?
+4. What family-level variance/effect scenarios and clustered/hierarchical method will the preregistered sensitivity/power simulation use, and what can eight units detect?
+5. Does quality non-inferiority require a conservative uncertainty bound or use a heuristic continuation rule, and is `0.03` justified after simulation?
+6. What is the one input-token superiority threshold? Correction rate cannot substitute.
+7. What static candidate set, development criterion, deterministic tie-breaker, and comparable tuning budget lock the one primary baseline?
+8. What severe/critical taxonomy and zero-tolerance stop triggers apply, and is ID-renaming retained in the confirmatory gate?
+9. What fixed within-family curricula, family-order procedure, and state-reset checks apply?
+10. Will ontology/policy freeze precede held-out authoring or will separate authors be used, and how are provenance grouping, near-duplicate detection, and independent review implemented?
+11. Which proposed task families should be replaced before authoring, and which artifacts may be committed versus retained securely?
+12. After the controlled pilot, which bounded dogfood workflow and separate natural-feedback protocol should be considered?
 
 ---
 
 ## 9. Immediate next step
 
-Review and approve the experiment charter—not the implementation architecture. Once the hypothesis, corpus, primary metric, strongest baseline, continuation gate, and stopping conditions are fixed, execute Tasks 1–4 before adding any model calls.
+Resolve protocol 1.1-draft and run its preregistered sensitivity/power simulation—not the implementation architecture. Only after the charter's open decisions, one-baseline lock, endpoints, corpus controls, scoring, safety triggers, and sequential gate are frozen may the corpus be sealed or model calls begin.

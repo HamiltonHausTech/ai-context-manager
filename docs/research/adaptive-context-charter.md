@@ -1,51 +1,67 @@
 # Adaptive Context Pilot Experiment Charter
 
-- **Status:** Preregistered protocol; final acceptance of the provisional threshold is an open decision
-- **Protocol version:** 1.0
+- **Status:** Draft preregistration; confirmatory execution prohibited until open decisions and power/sensitivity simulation are resolved
+- **Protocol version:** 1.1-draft
 - **Intended dataset version:** `devops_v1`
 - **Date:** 2026-07-28
 
-This document preregisters the controlled pilot described in the [approved implementation plan](../../.hermes/plans/2026-07-28_170432-adaptive-context-proof-plan.md). It defines the confirmatory claim, comparison conditions, measurements, analysis boundary, and conditions under which the claim would be weakened or rejected. It does not report evidence that the adaptive approach works.
+This document prospectively specifies the controlled pilot described in the [implementation plan](../../.hermes/plans/2026-07-28_170432-adaptive-context-proof-plan.md). Protocol 1.1-draft supersedes 1.0 prospectively, before corpus authoring or sealing, model execution, or outcome access; the complete rationale and change trail are in the [protocol amendment record](adaptive-context-protocol-amendments.md). This is not yet a frozen preregistration and does not report evidence that the adaptive approach works.
 
-Related architecture decisions:
+Related records:
 
+- [Protocol amendment record](adaptive-context-protocol-amendments.md)
 - [ADR 0001: Use the existing repository for the pilot](../decisions/0001-use-existing-repo-for-pilot.md)
 - [ADR 0002: Feedback is event data, not truth](../decisions/0002-feedback-is-event-data-not-truth.md)
 - [ADR 0003: Strong static selection is the primary baseline](../decisions/0003-strong-static-selection-is-primary-baseline.md)
+- [Adaptive context implementation plan](../../.hermes/plans/2026-07-28_170432-adaptive-context-proof-plan.md)
 
-## Research question
+## Research question and sequential confirmatory claim
 
-For recurring, controlled DevOps troubleshooting tasks, does a feedback-informed context selector improve downstream outcomes on held-out cases from known task families relative to the strongest credible static rules-and-metadata selector, when both operate on the same eligible candidates and under the same context-token budget?
+For recurring, controlled DevOps troubleshooting task families, after a fixed five-case adaptation curriculum, can a feedback-informed selector first preserve downstream quality relative to one locked strong static policy and, only if that quality guard passes, reduce input-context tokens?
+
+The confirmatory decision is sequential:
+
+1. Establish downstream task-quality non-inferiority of adaptive selection versus the **one locked primary static baseline**.
+2. Only if the quality guard passes, test superiority on **one primary efficiency endpoint: input-context tokens**.
+
+Correction rate is secondary/descriptive and cannot substitute for token efficiency. Quality superiority, if observed, is also secondary; it is not required to pass the confirmatory sequence.
 
 ## Hypotheses
 
-### Confirmatory primary hypothesis
+### Confirmatory hypotheses
 
-On held-out cases from known task families, the adaptive selector will produce higher downstream task quality than the strongest static rules-and-metadata baseline under the same candidate pool and token budget.
+- **Quality guard (first):** the equal-family-weighted adaptive-minus-locked-static task-quality effect after the fixed five-case adaptation history is above the accepted non-inferiority boundary. The current margin is provisionally `-0.03` on the eventual normalized quality scale.
+- **Efficiency test (second, conditional):** if and only if the quality guard passes, adaptive selection uses fewer input-context tokens than the locked static policy under the same maximum context-token budget.
 
-Downstream task quality is the primary outcome. Retrieval measures explain possible mechanisms and failures but cannot establish the primary hypothesis by themselves.
+The `0.03` quality margin is not accepted yet. The rubric scale and weights must be frozen, and the preregistered sensitivity/power simulation must show what effects this eight-family design can distinguish. Before protocol freeze, the team must also choose whether passing non-inferiority requires a conservative uncertainty bound above `-0.03` or uses an explicitly labeled heuristic continuation rule. No confirmatory execution may begin while that choice remains open.
 
-### Secondary hypotheses
+### Secondary hypotheses and outcomes
 
-These hypotheses are labeled secondary and are not substitutes for the primary outcome:
+These are not substitutes for either step of the confirmatory sequence:
 
-1. Adaptive selection reduces the rate of corrections required on held-out cases.
-2. Adaptive selection reduces irrelevant or misleading context selected.
-3. Adaptive selection reduces input-context tokens without a material loss of downstream task quality.
-4. Adaptive utility transfers to new context-item IDs within a known task family through reusable features rather than ID memorization.
+1. Adaptive selection improves downstream quality.
+2. Adaptive selection reduces correction count or correction rate.
+3. Adaptive selection reduces irrelevant or misleading selected context.
+4. Adaptive utility transfers to new context-item IDs within a known family through reusable features rather than ID memorization.
 
 ### Exploratory hypotheses
 
 1. Feature-level utility estimates outperform component-ID-local estimates.
-2. Effects differ predictably by context role, memory kind, source scope, confidence, recency, or static relevance bucket.
+2. Effects vary by context role, memory kind, source scope, confidence, recency, or static relevance bucket.
 3. Some task families benefit from static metadata alone while others benefit from adaptation.
-4. Natural behavioral feedback is sufficiently dense and unambiguous to support stable estimates after the controlled stages.
+4. Natural behavioral feedback is sufficiently dense and unambiguous to support stable estimates after controlled stages.
 
-Exploratory findings may motivate later protocols but will not be represented as confirmation of the primary hypothesis.
+Exploratory findings may motivate later protocols but cannot be represented as confirmation of this protocol.
 
-## Experimental unit and domain
+## Experimental unit, nesting, and estimand
 
-The experimental unit is a **task-case execution under one selector mode and one frozen run configuration**. Paired comparisons use executions of the same task case across modes; repeated model runs are nested within task case and mode rather than treated as independent cases.
+The independent unit for primary inference is the **task-family learning trajectory**, yielding eight top-level units. The 24 held-out cases are clustered within their eight families; repeated generations are nested measurements within case and mode. Neither held-out cases nor generations are independent experimental units, and repetitions improve measurement precision rather than independent sample size.
+
+The exact primary quality estimand is the **equal-family-weighted mean paired adaptive-minus-locked-static difference after the fixed five-case adaptation history, aggregating generations within each held-out case, then cases within each family, then giving each of the eight family effects equal weight**. The token estimand follows the same nesting and equal-family weighting; token superiority is expressed in the pre-freeze analysis specification as adaptive-minus-static tokens (with lower values favorable), with any relative reduction reported in addition to the absolute effect.
+
+The analysis must not bootstrap 24 cases independently. It will use a predeclared family-clustered or hierarchical resampling/modeling method that respects the nesting. Because there are only eight top-level units, all intervals must be labeled **coarse**. Reports must show the raw eight family effects, their median and range, the equal-family mean, and the number in the favorable direction. Per-family effects are mandatory descriptive reporting, not eight separate confirmatory tests.
+
+## Domain, corpus, and learning trajectories
 
 The controlled domain is synthetic-but-realistic DevOps troubleshooting. The intended corpus contains eight task families:
 
@@ -58,134 +74,144 @@ The controlled domain is synthetic-but-realistic DevOps troubleshooting. The int
 7. Security-group versus NACL diagnosis.
 8. Certificate or TLS-chain failures.
 
-The intended corpus has **64 cases: 8 families × 8 cases**. Within each family, five ordered cases are adaptation cases and three are sealed held-out cases, for 40 adaptation cases and 24 held-out cases overall. Held-out cases will use context-item IDs not seen during adaptation while preserving reusable feature structure.
+The intended corpus has 64 cases: eight families by eight cases. Within each family, five cases form a fixed ordered adaptation curriculum and three are sealed held-out cases. The exact adaptation order must be declared before execution. Primary claims are restricted to learning under that curriculum; claims about order robustness require counterbalanced orders in a later protocol.
 
-Each case will define its prompt, environment facts, eligible context candidates, required and useful context, misleading and irrelevant context, expected diagnostic steps, prohibited assumptions or unsafe actions, a scoring rubric, and the feedback event revealed after an adaptation run.
+For the primary pilot, learned utility state is reset before each family so the eight family trajectories remain independent. The family execution order is recorded. Held-out context-item IDs differ from adaptation IDs while preserving predeclared reusable feature structure.
 
-## Comparison conditions
+Each case defines its prompt, environment facts, eligible candidates, required/useful/misleading/irrelevant context, expected diagnostic steps, prohibited assumptions or unsafe actions, scoring rubric, provenance/template group, and the locked feedback event available after an adaptation run.
 
-The experiment will compare:
+## Comparison conditions and baseline fairness
 
-1. **Full-context reference:** all eligible context that fits the reference condition. This measures token cost and possible attention dilution; it is not the primary baseline.
-2. **Similarity/top-K baseline:** similarity-ranked selection packed under the common token budget.
-3. **Static explainable selector:** query relevance, lifecycle filtering, metadata, recency, and fixed importance weights, with an inclusion/exclusion trace.
-4. **Strongest static rules + metadata baseline:** the strongest credible non-learning policy developed using adaptation/validation information only. This is the primary baseline.
-5. **Adaptive candidate:** the static feature set plus transparent utility estimates learned only from previously revealed adaptation feedback.
+The experiment may execute these conditions:
 
-For comparable budgeted modes, the task, the same eligible candidate pool, candidate representations, context-token budget, prompt/template, model and provider, generation configuration, tool availability, and scoring protocol must be identical. The adaptive mode receives neither richer metadata nor a larger budget. The full-context condition is a reference and any unavoidable budget difference must be explicit in the manifest and excluded from claims of budget-matched superiority.
+1. **Full-context reference:** all eligible context that fits; a cost/attention reference, not a primary baseline.
+2. **Similarity/top-K baseline:** a secondary comparison.
+3. **Static explainable selector variants:** development candidates only.
+4. **Locked primary static policy:** exactly one strongest credible non-learning rules-and-metadata policy selected using development/adaptation information only.
+5. **Adaptive candidate:** the same static features plus transparent utility estimates learned only from permitted prior adaptation feedback.
 
-Static-policy selection and baseline choice must be frozen before confirmatory held-out outcomes are viewed. See [ADR 0003](../decisions/0003-strong-static-selection-is-primary-baseline.md).
+Before freeze, the team must predefine the static-policy candidate set, development criterion, and deterministic tie-breaker. Exactly one primary static policy is then locked without held-out outcomes. Static and adaptive modes receive comparable engineering/tuning effort and the same access to development information and metadata, except that adaptive mode alone receives the protocol-defined prior adaptation feedback. They otherwise share the eligible candidate pool and representations, context-token budget, prompt/template, model/provider, generation configuration, tools, and scoring protocol. All contrasts other than adaptive versus this one locked static policy are secondary or exploratory. See [ADR 0003](../decisions/0003-strong-static-selection-is-primary-baseline.md).
 
-## Outcomes and required measurements
+## Feedback comparability
 
-### Primary outcome
+In oracle and simulated stages, the adaptation signal is a locked feedback record generated independently of which selector ran; selectors cannot change the label or amount of feedback they receive. This isolates selection-policy learning from policy-induced feedback.
 
-The primary outcome is rubric-scored **downstream task quality** on sealed held-out cases. The rubric will reward required diagnostic reasoning and correct conclusions and penalize critical omissions, false claims, prohibited assumptions, and unsafe actions. The final deterministic/human scoring blend remains an open decision and must be fixed before confirmatory execution.
-
-### Required secondary and diagnostic measurements
-
-Every comparable mode will report, overall and by task family:
-
-- downstream task-quality score and pass/success rate;
-- critical or safety-related failures;
-- corrections required and correction rate;
-- input-context tokens;
-- context precision and recall;
-- irrelevant context selected;
-- misleading context selected;
-- latency and estimated cost;
-- selection and outcome stability across repeated runs.
-
-Retrieval metrics, including context precision, recall, ranking measures, and token efficiency, are diagnostic. Good retrieval scores cannot override an incorrect or unsafe downstream answer.
+Natural model/human feedback is different: it depends on the selected context and produced answer and therefore creates a policy-dependent online trajectory. Natural-feedback results must be labeled as such, analyzed as trajectories rather than interchangeable supervised labels, and cannot confirm the oracle/simulated claim without a later protocol designed for that estimand.
 
 ## Corpus sealing and leakage controls
 
-1. Adaptation cases run in declared order; feedback is revealed only after the corresponding adaptation execution.
-2. Held-out prompts, labels, rubrics, feedback, and outcomes are sealed from selection-policy development and learning.
-3. The adaptive selector may learn only from prior adaptation feedback. It may not consume held-out feedback until all held-out selection and generation are complete.
-4. The corpus, code, policy configuration, prompt, model configuration, and manifests are versioned and hashed before confirmatory evaluation.
-5. No selector, threshold, prompt, rubric, baseline, or feature may be tuned after viewing confirmatory held-out outcomes. Any later change belongs to a new protocol and a new held-out evaluation.
+1. Split corpus material at the **scenario-template/provenance-group** level, not merely by case or context-item ID.
+2. Detect exact duplicates and near-duplicate text/content across adaptation, development, and held-out splits; retain normalized content hashes and the near-duplicate review record.
+3. Freeze the feature ontology and adaptive-policy specification before held-out authoring, **or** use separate held-out authors who do not see selector-development results. Record which protection is used.
+4. Require an independent domain reviewer, without access to selector results, to review required evidence, misleading/irrelevant distractors, expected conclusions, unsafe actions, and rubrics.
+5. Reveal adaptation feedback only after its case executes, in the fixed within-family order. The adaptive selector may consume only prior permitted feedback.
+6. Keep held-out prompts, labels, rubrics, feedback, and outcomes sealed from selector/policy development and learning until every held-out selection and generation is complete.
+7. Before confirmatory execution, hash and seal prompts, candidate pools, labels, rubrics, scoring rules, corpus splits/provenance groups, policy configuration, code, model/prompt configuration, and manifests.
+8. No selector, threshold, prompt, rubric, baseline, feature, exclusion rule, or aggregation may be tuned after held-out outcome access. A later change requires a new protocol and newly sealed evaluation.
 
-## Scoring and blinding
+## Outcomes and measurements
 
-Deterministic rubric checks will be used wherever possible, especially for required steps, explicit false claims, prohibited actions, and unsafe recommendations. Where human judgment is required, outputs will be presented without selector-mode labels and scored against the frozen rubric. Rater identity, adjudication, missing ratings, and disagreements will be retained in the audit record. Model-based judging, if used, will be declared in the final scoring blend and treated as a frozen measurement component rather than ground truth.
+### Confirmatory endpoints
 
-## Repeated runs and frozen manifests
+- One quality non-inferiority endpoint: frozen rubric-scored downstream task quality.
+- One conditional efficiency-superiority endpoint: input-context tokens.
+- The adaptive-versus-one-locked-static contrast.
+- The ID-renaming/component-ID ablation, **only if retained in the final continuation gate before freeze**.
 
-Each model condition will be run repeatedly; the exact number of repetitions is an open decision that must be resolved before confirmatory execution. Each run will have a frozen manifest recording at least corpus version/hash, code revision, selector/policy version, provider and exact model identifier, prompt/template hash, temperature and seed where supported, tool availability, token budget, timestamps, token accounting, and raw-response hash. Runs with incompatible manifests will not be pooled in the confirmatory comparison.
+### Secondary and descriptive measurements
 
-## Confirmatory analysis
+Every comparable mode reports overall and by family: quality and pass rate, correction count/rate, input tokens, critical/severe events, context precision/recall, irrelevant and misleading context, selection stability, and repeated-generation stability. Critical safety events are governed separately below.
 
-The confirmatory analysis population is all valid, preregistered held-out task cases run under compatible frozen manifests. Exclusions may be made only for predeclared integrity failures, such as a provider failure that produced no answer or verified held-out leakage; every exclusion and its reason must be reported.
+### Exploratory measurements and analyses
 
-Analysis will include:
+Other selector/reference contrasts, per-family heterogeneity tests, retrieval/ranking metrics, latency, estimated cost, feature analyses, alternate quality weights, alternate thresholds, other ablations, post-hoc subgroups, and natural-feedback analyses are exploratory. Retrieval metrics can explain mechanisms but cannot override an incorrect or unsafe downstream answer.
 
-- paired adaptive-minus-primary-baseline effect sizes on task quality;
-- uncertainty estimates and confidence intervals for paired effects;
-- paired comparisons for correction rate and input tokens;
-- critical-failure counts, without allowing gains elsewhere to offset a safety regression;
-- per-family effects and the number of families showing the declared direction;
-- stability across repeated runs;
-- feature-only, ID-local/component-ID, and no-learning/static ablations;
-- complete reporting of null, adverse, ambiguous, and negative results.
+## Scoring, blinding, and measurement validation
 
-The confidence-interval method and final scoring aggregation will be frozen before confirmatory execution. Analyses not listed as confirmatory here—including post-hoc subgroups, alternate scoring blends, alternate thresholds, and feature mining—are exploratory and must be labeled as such.
+Scorers must be blinded to selector mode, selection traces, filenames, run order, and condition labels. Output presentation is randomized and uses opaque identifiers. Rubric calibration and scorer training use development cases only, never held-out outputs.
 
-## Provisional continuation gate
+Two independent human scorers evaluate a substantial, predeclared stratified subset and every critical or safety judgment. The protocol freeze records the subset fraction/strata, agreement statistic, disagreement handling, and adjudication procedure; reports include agreement and adjudication counts. Any scorer identity, missing rating, and disagreement remains in the audit record.
 
-The following gate is preregistered as **provisional** and must receive final threshold acceptance before held-out results are viewed:
+LLM judging is exploratory unless it is prospectively validated against blinded human judgments to a predeclared acceptance criterion. Deterministic scorers are tested on meaning-preserving paraphrases and adversarial phrasing, not just keyword fixtures. The final rubric scale, weights, aggregation, and deterministic/human blend must be fixed before the sensitivity simulation and confirmatory execution.
 
-- Mean adaptive quality is no worse than 0.03 below the best static baseline.
-- Adaptive selection improves either correction rate or input-token use by at least 20% relative to the best static baseline.
-- There is no increase in critical or safety-related failures.
-- Improvement is visible in at least five of eight task families.
-- A component-ID ablation indicates that the result is not primarily memorization.
+## Repeated generations, order, and manifests
 
-Passing this gate supports only a decision to **continue investigating**. It is not proof of broad organizational learning, production value, or superiority in other domains.
+The recommended primary design uses **five matched repetitions** for the adaptive and locked-static modes; the minimum is three if cost-constrained. The final repetition count is an explicit pre-freeze decision. Repetitions use predeclared matching and aggregation and do not increase the independent sample size beyond eight trajectories.
 
-## Falsification and stopping conditions
+Within execution constraints, primary-mode generations are randomized/interleaved across mode and opaque run order rather than running one mode in a block. Each generation is stateless except for the explicit protocol-controlled adaptive utility state. Disable uncontrolled provider/session memory, response caches, and hidden carry-over where technically possible; document any unavoidable cache. Record provider revision/model identifier and execution time. A frozen manifest also records corpus/code/policy hashes, prompt/template hash, temperature and seed where supported, tools, budget, token accounting, and raw-response hash. Incompatible manifests are not pooled.
 
-The primary thesis is weakened or rejected for this pilot if, after documented correction of implementation or measurement defects, any of the following persists:
+## Sensitivity and power simulation before freeze
 
-- adaptive held-out quality degrades by more than the predeclared tolerance;
-- apparent gains disappear when held-out component IDs are replaced or ID-local utility is disabled;
-- strong static rules and metadata account for essentially all observed improvement;
-- feedback improves adaptation cases but not held-out cases;
-- improvement is concentrated in too few task families to satisfy the gate;
-- feedback is too sparse or ambiguous to produce stable utility estimates;
-- effect direction is unstable across repeated runs under the frozen configuration;
-- critical or safety-related failures increase.
+Before protocol freeze, preregister and run a simulation over plausible family-level effect distributions, within-family case variation, repeated-generation variation, quality-score bounds, and candidate family-clustered/hierarchical analyses. Report operating characteristics for the proposed non-inferiority rule and conditional token test, including detectable family-level effects, false-continuation behavior, sensitivity to outlier families, and consequences of three versus five repetitions.
 
-The confirmatory run must stop and be declared invalid—not silently repaired—if held-out data leak into adaptation, manifests are incompatible across compared conditions, scorer blinding is broken in a way likely to bias judgments, or corpus/rubric corruption prevents valid scoring. An implementation defect discovered before held-out outcomes are inspected may be corrected with an audit record and a new frozen manifest. A defect discovered after inspection requires a new protocol version and newly sealed confirmatory evaluation. Resource or provider failures may stop execution without a scientific conclusion; partial results will be retained and labeled incomplete.
+With only eight top-level units, the simulation is for design calibration and limitations, not conventional p-value theater. The final protocol must state what family-level effects the design can and cannot reliably detect, justify or revise the `0.03` margin and token threshold, and label uncertainty as coarse. If plausible effects are not detectable, narrow the claim, add independent families, or treat the pilot as descriptive.
+
+## Sequential continuation decision
+
+The current continuation gate is a draft pending the simulation and open decisions:
+
+1. Apply the predeclared quality non-inferiority rule versus the one locked static policy. Stop the confirmatory sequence if it fails.
+2. Only after quality non-inferiority passes, apply the predeclared superiority rule to input-context tokens. Correction rate cannot satisfy this step.
+3. Apply the zero-tolerance safety guardrail independently of statistical results.
+4. If retained before freeze, require the ID-renaming/component-ID ablation to rule out an advantage primarily caused by ID memorization.
+
+The exact token-superiority threshold and whether the quality gate uses a conservative uncertainty bound or a heuristic continuation rule remain open. Family-direction counts are descriptive and are not an additional multiplicity-generating gate unless prospectively justified before freeze. Passing supports only continued investigation, not broad organizational learning, production value, or cross-domain superiority.
+
+## Safety engineering guardrail
+
+Safety is not an equivalence or statistical “no increase” claim. Define severe/critical failure categories and stop triggers before freeze. Manually review every severe or critical event under blinded conditions, with two independent scorers and adjudication. Stop execution on any preregistered severe-failure trigger, preserve the partial audit trail, and investigate without trading the event against quality or token gains. Report event counts and the paired cases by mode; do not claim safety equivalence from sparse events.
+
+## Negative controls and falsification
+
+The staged harness must include no-effect controls where feedback cannot change utility, misleading shared-feature controls that should expose harmful transfer, feature perturbation tests, template/provenance-group ablations, and the predeclared ID-renaming ablation if retained. A valid harness must detect deliberately introduced leakage and false adaptive advantages.
+
+The thesis is weakened or rejected for this pilot if adaptive quality breaches the accepted non-inferiority rule; token superiority fails after the guard passes; gains disappear under retained anti-memorization controls; static rules explain the result; improvement stays in adaptation cases; feedback is too sparse/ambiguous; effect direction is unstable; or a safety stop is triggered. Null, adverse, ambiguous, and negative results are reported completely.
+
+The run is invalid—not silently repaired—if held-out data leak into adaptation, incompatible manifests undermine pairing, scorer blinding is materially broken, or corpus/rubric corruption prevents valid scoring. A defect found before outcome access may be corrected with an audit record and new frozen manifest. A defect found after outcome access requires a new protocol and newly sealed evaluation.
+
+## Stage-specific claims
+
+- **Tiny deterministic fixtures** can establish schema, ordering, leakage checks, state reset, scorer mechanics, and report reconstruction; they cannot establish empirical benefit.
+- **Oracle feedback** can establish that learning logic uses known informative labels and transfers under constructed assumptions; it cannot establish learnability from behavioral feedback.
+- **Simulated feedback** can establish behavior under a declared noise model; it cannot establish that the model resembles human/production feedback.
+- **Frozen-model synthetic trials** can estimate model-mediated effects on the sealed synthetic domain under one provider revision and curriculum; they cannot establish external validity, natural-feedback causality, production safety, or unseen-domain transfer.
+- **Naturalistic dogfood** can expose workflow, ambiguity, and operational failure modes; absent a separately preregistered controlled design, it cannot confirm the synthetic pilot or support causal product claims.
 
 ## Confirmatory versus exploratory boundary
 
-Only the primary hypothesis, declared secondary outcomes, primary-baseline comparison, population, measurements, paired analyses, ablations, per-family analysis, and gate specified above are confirmatory. Alternative models, prompts, selectors, feature sets, task-family regroupings, exclusion rules, thresholds, scoring blends, or analyses conceived after viewing held-out outcomes are exploratory. Exploratory work must be reported separately and cannot retroactively change whether this protocol passed.
+Confirmatory scope is deliberately narrow: one adaptive-versus-locked-static contrast, one quality non-inferiority endpoint, one conditional input-token endpoint, and the ID-renaming ablation only if retained in the final gate. Raw per-family effects are mandatory descriptive reporting, not eight confirmatory tests. Everything else—including other selectors, heterogeneity tests, retrieval metrics, latency/cost, feature analyses, alternate weights, and other ablations—is secondary/descriptive or exploratory as labeled above and cannot retroactively change the decision.
 
 ## Feedback evidence boundary
 
-Raw feedback is evidence about an event, not reusable truth. It is append-only and tied to the run, task, selected context, outcome, signal source, and provenance. Promotion into reusable experience is a separate reviewed lifecycle, as specified by [ADR 0002](../decisions/0002-feedback-is-event-data-not-truth.md).
+Raw feedback is evidence about an event, not reusable truth. It is append-only and tied to the run, task, selected context, outcome, signal source, and provenance. Promotion into reusable experience is a separate reviewed lifecycle under [ADR 0002](../decisions/0002-feedback-is-event-data-not-truth.md).
 
 ## Amendment and audit policy
 
-Corrections or clarifications create a new protocol version and a dated audit record describing the reason, exact change, author, timing relative to corpus sealing and outcome access, and expected analytical impact. After preregistration, there will be **no silent edits**. Amendments made after confirmatory outcomes are viewed cannot redefine the original confirmatory analysis or gate; they define exploratory work or a new experiment with newly sealed data.
+Corrections or clarifications create a new protocol version and a dated entry in the [amendment record](adaptive-context-protocol-amendments.md), including reason, exact change, author, timing relative to authoring/sealing/execution/outcome access, and analytical impact. There are no silent edits. Post-outcome amendments cannot redefine the original analysis or gate; they define exploratory work or a new experiment with newly sealed data.
 
 ## Explicit limitations
 
-- The corpus is synthetic and may not reproduce the distribution, incentives, ambiguity, or operational constraints of real incidents.
-- Rubrics are authored and may encode author assumptions or favor particular diagnostic styles.
-- Model stochasticity can remain despite frozen settings, and providers may not guarantee deterministic execution.
-- Sixty-four cases provide a pilot-scale estimate and limited per-family precision.
-- Known-family held-out cases test transfer within represented families, not transfer to unseen domains.
-- This pilot cannot prove broad organizational learning, durable production benefit, causal credit assignment from natural feedback, or safety in autonomous operations.
+- Eight independent family trajectories provide coarse precision and weak support for distributional assumptions; 24 held-out cases and repeated generations do not change that top-level sample size.
+- The synthetic corpus may not reproduce real incident distributions, incentives, ambiguity, or operational constraints.
+- Authored rubrics may encode author assumptions despite independent review and blinding.
+- Provider behavior can drift despite frozen settings and recorded revisions.
+- Fixed within-family order identifies effects for this curriculum, not order-robust learning.
+- Known-family held-out cases test transfer within represented families, not unseen domains.
+- This pilot cannot prove broad organizational learning, durable production benefit, causal credit assignment from natural feedback, safety equivalence, or safety in autonomous operations.
 
-## Open decisions to resolve before confirmatory execution
+## Open decisions required before protocol freeze
 
-The following are deliberately unresolved and are not to be inferred from later defaults:
+1. Exact model/provider, provider-revision policy, and generation configuration.
+2. Three or five matched repetitions; exact interleaving, matching, and generation aggregation.
+3. Frozen rubric scale/weights; human subset fraction/strata; agreement/adjudication rules; deterministic/human scoring blend; any human-validation criterion for an LLM judge.
+4. The simulation inputs, family-clustered/hierarchical uncertainty method, and acceptance criterion for detectable effects.
+5. Whether quality non-inferiority uses a conservative uncertainty bound or an explicitly heuristic continuation rule; acceptance or revision of the provisional `0.03` margin.
+6. Exact input-token superiority threshold and scale (absolute plus relative reporting).
+7. Static-policy candidate set, development criterion, and deterministic tie-breaker; evidence of comparable tuning opportunity.
+8. Final severe/critical taxonomy and preregistered stop triggers.
+9. Whether the ID-renaming ablation remains part of the confirmatory gate and its pass criterion.
+10. Exact fixed adaptation order per family, family execution-order procedure, and state-reset verification.
+11. Corpus leakage protection choice: ontology/policy frozen before held-out authoring or separate held-out authors; provenance grouping, duplicate/near-duplicate method, and independent reviewer identity/process.
+12. Which artifacts may be committed versus retained securely.
 
-1. **Exact model/provider and generation configuration.**
-2. **Number of repeated model runs per case and mode.**
-3. **Final scoring blend** among deterministic checks, blinded human review, and any frozen model judge.
-4. **Final threshold acceptance** for the provisional continuation gate, including whether the 20% relative improvement and 0.03 quality tolerance are accepted unchanged.
-
-These decisions must be resolved, versioned, and audited before held-out outcomes are viewed. If their resolution changes the confirmatory design, protocol version 1.1 (or later) will supersede this version prospectively; version 1.0 remains in history.
+All items must be resolved, simulated where applicable, versioned, reviewed, and recorded in a later frozen protocol before corpus sealing/model execution. Confirmatory execution under 1.1-draft is prohibited.
