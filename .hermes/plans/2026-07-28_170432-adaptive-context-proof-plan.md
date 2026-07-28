@@ -475,11 +475,11 @@ The confirmatory report contains one quality non-inferiority endpoint and, condi
 **Objective:** Resolve the scientific design prospectively, select exactly one primary static policy, and freeze the feature/policy definitions before held-out authoring.
 
 **Steps:**
-1. Run the preregistered sensitivity/power simulation and resolve every open item in the draft charter.
-2. Select exactly one primary static policy using only development/adaptation material, the predefined criterion, and the deterministic tie-breaker.
-3. Retain evidence of comparable tuning opportunity and the complete candidate-policy results.
-4. Freeze the feature ontology, adaptive-policy specification, primary static policy, rubric/scoring specification, provider/model plan, repetition/order plan, safety taxonomy, and continuation rule.
-5. Publish a new prospective protocol version with an audit entry. Do not proceed if the simulation shows that the intended claim is not distinguishable with eight trajectories.
+1. Resolve and version the simulation inputs first: rubric scale/weights/aggregation, scoring blend, candidate uncertainty method, plausible family/case/generation variance, proposed quality margin, proposed token threshold, and three-versus-five repetition designs.
+2. Select exactly one primary static policy using only development/adaptation material, the predefined criterion, and the deterministic tie-breaker; retain evidence of comparable tuning opportunity and all candidate-policy results.
+3. Freeze the feature ontology, adaptive-policy specification, primary static policy, rubric/scoring specification, provider/model plan, repetition/order plan, safety taxonomy, and the versioned inputs to the proposed continuation rule.
+4. Run the preregistered sensitivity/power simulation only against those frozen inputs. If its findings require a changed margin, threshold, rubric, scorer, repetition design, or uncertainty method, create a new prospective input version and rerun the simulation; do not reuse results from obsolete inputs.
+5. Resolve every remaining open charter item and publish a new prospective frozen protocol version with an audit entry. Do not proceed if the final simulation shows that the intended claim is not distinguishable with eight trajectories.
 
 ### Task 14: Author, review, and seal held-out cases
 
