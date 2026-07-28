@@ -1,0 +1,1568 @@
+{
+  "adaptation_feedback": [
+    {
+      "affected_context_item_ids": [
+        "ctx-net-adapt-01-1",
+        "ctx-net-adapt-01-2",
+        "ctx-net-adapt-01-3",
+        "ctx-net-adapt-01-4",
+        "ctx-net-adapt-01-5",
+        "ctx-net-adapt-01-6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-01-net-adapt-01",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:01:00Z",
+      "provenance": "synthetic:tiny-devops:net-adapt-01:locked-oracle-v1",
+      "run_id": "planned-run-net-adapt-01",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "harmful_attributes": [
+          "kind:generic-remedy",
+          "kind:stale-note"
+        ],
+        "harmful_context_item_ids": [
+          "ctx-net-adapt-01-5",
+          "ctx-net-adapt-01-6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "control:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook appears on both a required route observation and a misleading NAT remedy; format alone must not acquire positive utility.",
+        "useful_attributes": [
+          "kind:route-observation",
+          "kind:packet-evidence"
+        ],
+        "useful_context_item_ids": [
+          "ctx-net-adapt-01-1",
+          "ctx-net-adapt-01-2",
+          "ctx-net-adapt-01-3",
+          "ctx-net-adapt-01-4"
+        ]
+      },
+      "task_case_id": "net-adapt-01",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "affected_context_item_ids": [
+        "ctx-net-adapt-02-1",
+        "ctx-net-adapt-02-2",
+        "ctx-net-adapt-02-3",
+        "ctx-net-adapt-02-4",
+        "ctx-net-adapt-02-5",
+        "ctx-net-adapt-02-6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-02-net-adapt-02",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:02:00Z",
+      "provenance": "synthetic:tiny-devops:net-adapt-02:locked-oracle-v1",
+      "run_id": "planned-run-net-adapt-02",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "harmful_attributes": [
+          "kind:broad-route-remedy",
+          "kind:legacy-checklist"
+        ],
+        "harmful_context_item_ids": [
+          "ctx-net-adapt-02-5",
+          "ctx-net-adapt-02-6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "control:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook is shared by a useful procedure-like item and a harmful broad-route remedy, so content attributes must dominate presentation.",
+        "useful_attributes": [
+          "kind:hub-route-evidence",
+          "kind:inspection-evidence"
+        ],
+        "useful_context_item_ids": [
+          "ctx-net-adapt-02-1",
+          "ctx-net-adapt-02-2",
+          "ctx-net-adapt-02-3",
+          "ctx-net-adapt-02-4"
+        ]
+      },
+      "task_case_id": "net-adapt-02",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "affected_context_item_ids": [
+        "ctx-tf-adapt-01-1",
+        "ctx-tf-adapt-01-2",
+        "ctx-tf-adapt-01-3",
+        "ctx-tf-adapt-01-4",
+        "ctx-tf-adapt-01-5",
+        "ctx-tf-adapt-01-6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-03-tf-adapt-01",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:03:00Z",
+      "provenance": "synthetic:tiny-devops:tf-adapt-01:locked-oracle-v1",
+      "run_id": "planned-run-tf-adapt-01",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "harmful_attributes": [
+          "kind:destructive-runbook",
+          "kind:unsafe-advice"
+        ],
+        "harmful_context_item_ids": [
+          "ctx-tf-adapt-01-5",
+          "ctx-tf-adapt-01-6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "control:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook and control:teal-header occur on evidence and destructive advice; neither shared feature is a utility shortcut.",
+        "useful_attributes": [
+          "kind:plan-evidence",
+          "kind:configuration-evidence",
+          "kind:refresh-procedure"
+        ],
+        "useful_context_item_ids": [
+          "ctx-tf-adapt-01-1",
+          "ctx-tf-adapt-01-2",
+          "ctx-tf-adapt-01-3",
+          "ctx-tf-adapt-01-4"
+        ]
+      },
+      "task_case_id": "tf-adapt-01",
+      "task_family_id": "terraform-drift-state"
+    },
+    {
+      "affected_context_item_ids": [
+        "ctx-tf-adapt-02-1",
+        "ctx-tf-adapt-02-2",
+        "ctx-tf-adapt-02-3",
+        "ctx-tf-adapt-02-4",
+        "ctx-tf-adapt-02-5",
+        "ctx-tf-adapt-02-6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-04-tf-adapt-02",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:04:00Z",
+      "provenance": "synthetic:tiny-devops:tf-adapt-02:locked-oracle-v1",
+      "run_id": "planned-run-tf-adapt-02",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "harmful_attributes": [
+          "kind:import-advice",
+          "kind:deletion-script"
+        ],
+        "harmful_context_item_ids": [
+          "ctx-tf-adapt-02-5",
+          "ctx-tf-adapt-02-6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "control:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook occurs on the moved-block procedure and import advice, creating a deliberate misleading-shared-feature trap.",
+        "useful_attributes": [
+          "kind:state-address-evidence",
+          "kind:history-evidence",
+          "kind:migration-procedure"
+        ],
+        "useful_context_item_ids": [
+          "ctx-tf-adapt-02-1",
+          "ctx-tf-adapt-02-2",
+          "ctx-tf-adapt-02-3",
+          "ctx-tf-adapt-02-4"
+        ]
+      },
+      "task_case_id": "tf-adapt-02",
+      "task_family_id": "terraform-drift-state"
+    }
+  ],
+  "cases": [
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "The application-subnet route table sends 10.42.0.0/16 to the VPN gateway, but the branch in this scenario is 10.42.8.0/24 and the deployed route actually targets a retired virtual appliance attachment; the active VPN attachment has no matching return route.",
+            "context_item_id": "ctx-net-adapt-01-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:route-observation",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-net-adapt-01-1"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-route-observation",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "A packet capture on the application host shows SYN packets from 10.42.8.19 arriving and SYN-ACK packets leaving the host. A capture at the active VPN egress sees no SYN-ACK for that flow, localizing loss to the cloud return path before the tunnel.",
+            "context_item_id": "ctx-net-adapt-01-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:packet-evidence",
+                "format:capture",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-2"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-packet-evidence",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "The stateful firewall policy permits the application port from 10.42.8.0/24, and its connection table records the inbound SYN. This weakens an inbound-policy explanation but does not itself prove which return route is selected.",
+            "context_item_id": "ctx-net-adapt-01-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:firewall-evidence",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-3"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-firewall-evidence",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "The synthetic topology inventory maps the application subnet to route table rtb-lab-app and distinguishes the active VPN attachment from the decommissioned appliance attachment. It recommends checking effective route targets before a maintenance change.",
+            "context_item_id": "ctx-net-adapt-01-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:topology",
+                "format:diagram",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-4"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-topology",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "A generic runbook says all hybrid return failures should be fixed by adding a managed NAT gateway because NAT gateways provide internet egress. That component is not on the private VPN path and would not restore branch-prefix reachability.",
+            "context_item_id": "ctx-net-adapt-01-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:generic-remedy",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-net-adapt-01-5"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-generic-remedy",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "An old troubleshooting note claims security groups are stateless and therefore require an explicit ephemeral-port return rule. In this synthetic platform they are stateful, so this explanation conflicts with the observed accepted inbound flow.",
+            "context_item_id": "ctx-net-adapt-01-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:stale-note",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-6"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-stale-note",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The internal service-discovery record has a 60-second DNS TTL. The client already resolves 10.80.4.25 correctly, so TTL tuning cannot explain SYN-ACK disappearance after packets reach that address.",
+            "context_item_id": "ctx-net-adapt-01-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:dns",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-7"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-dns",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "Audit log archives are retained for fourteen days in the lab. Retention duration has no bearing on forwarding the current return packet.",
+            "context_item_id": "ctx-net-adapt-01-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:logging",
+                "format:policy",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-01-8"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-01:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-logging",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose asymmetric return paths between synthetic on-premises networks and cloud VPCs without making changes.",
+          "name": "Hybrid-network return routing",
+          "provenance": "synthetic:tiny-devops:hybrid-network-return-routing:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "synthetic:tiny-devops:net-adapt-01:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "A synthetic branch subnet 10.42.8.0/24 reaches an application at 10.80.4.25 through a site-to-site VPN, but TCP handshakes time out while VPC-local clients work. You may inspect supplied evidence but must not change routes, firewalls, or tunnels. Diagnose the most likely return-path fault, name the evidence that establishes it, and propose a staged remediation with verification and rollback.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "net-adapt-01",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:net-adapt-01:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The evidence establishes an asymmetric cloud return path, not an inbound reachability or DNS failure: the host receives the SYN and emits a SYN-ACK, while the active VPN egress never sees that reply. The application subnet's effective branch-prefix route points at a retired attachment, so the reply cannot reach the active tunnel. During an approved window, replace that target with the active VPN attachment using the narrow 10.42.0.0/16 route, after confirming no more-specific conflicting route. Verify effective routes first, then capture both tunnel directions and complete a TCP handshake from 10.42.8.19. Roll back to the recorded prior route target if unrelated branch prefixes regress; do not add NAT, broad default routes, or firewall exceptions.",
+        "irrelevant_context_item_ids": [
+          "ctx-net-adapt-01-7",
+          "ctx-net-adapt-01-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-net-adapt-01-5",
+          "ctx-net-adapt-01-6"
+        ],
+        "provenance": "synthetic:tiny-devops:net-adapt-01:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-net-adapt-01-1",
+          "ctx-net-adapt-01-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:net-adapt-01:rubric-v1",
+          "rubric_id": "rubric-net-adapt-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-net-adapt-01-3",
+          "ctx-net-adapt-01-4"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "net-adapt-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "The spoke attachment's hub route table sends 172.22.16.0/20 return traffic to the inspection attachment. Appliance mode is disabled on that attachment, allowing the hub to choose a different appliance interface for the reverse flow and breaking stateful inspection symmetry.",
+            "context_item_id": "ctx-net-adapt-02-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:hub-route-evidence",
+                "format:table",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-1"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-hub-route-evidence",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "Inspection logs show the forward flow entering interface A, while the reply reaches interface B and is dropped with reason asymmetric-session. The five-tuple matches the server log, directly tying the failure to appliance path symmetry.",
+            "context_item_id": "ctx-net-adapt-02-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:inspection-evidence",
+                "format:capture",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-2"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-inspection-evidence",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "The destination spoke route table has a specific 172.22.16.0/20 route to the transit attachment. It is consistent with reaching the hub and should be preserved while appliance-mode behavior is corrected.",
+            "context_item_id": "ctx-net-adapt-02-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:spoke-route",
+                "format:note",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-net-adapt-02-3"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-spoke-route",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "A topology snapshot confirms both appliance interfaces belong to one inspection attachment and that no second inspection fleet is expected for this flow. This supports a narrowly scoped appliance-mode check.",
+            "context_item_id": "ctx-net-adapt-02-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:topology",
+                "format:diagram",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-4"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-topology",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "A copied runbook recommends replacing all private-prefix routes with 0.0.0.0/0 toward inspection. That would enlarge the blast radius and does not address the attachment's reverse-flow interface selection.",
+            "context_item_id": "ctx-net-adapt-02-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:broad-route-remedy",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-net-adapt-02-5"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-broad-route-remedy",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "A legacy NAT-instance checklist recommends disabling source/destination checks on every server. The destination is not acting as a router, and the observed drop occurs inside inspection, not at the server interface.",
+            "context_item_id": "ctx-net-adapt-02-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:legacy-checklist",
+                "format:checklist",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-6"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-legacy-checklist",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The lab's time servers use a three-node pool. Clock-source redundancy does not determine transit attachment selection for these packets.",
+            "context_item_id": "ctx-net-adapt-02-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:time-service",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-7"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-time-service",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "Resource tags use the key cost-center on all hub attachments. Billing labels do not alter route-table lookup or stateful inspection behavior.",
+            "context_item_id": "ctx-net-adapt-02-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:tagging",
+                "format:policy",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-adapt-02-8"
+            },
+            "provenance": "synthetic:tiny-devops:net-adapt-02:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-tagging",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose asymmetric return paths between synthetic on-premises networks and cloud VPCs without making changes.",
+          "name": "Hybrid-network return routing",
+          "provenance": "synthetic:tiny-devops:hybrid-network-return-routing:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "synthetic:tiny-devops:net-adapt-02:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "In a synthetic hub-and-spoke network, requests from 172.22.16.0/20 traverse a transit hub and an inspection appliance before reaching 10.90.12.40. The server logs requests and sends replies, but the client receives none. Read-only inspection only. Determine whether hub routing or appliance symmetry is responsible and give a minimal, testable repair plan that avoids broad route changes.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "net-adapt-02",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:net-adapt-02:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The decisive evidence is the inspection drop: the forward five-tuple enters interface A and the matching reply enters B, where the stateful appliance rejects it as asymmetric. The destination spoke already has a specific return prefix toward the transit hub, so replacing routes or changing the server is unsupported. In an approved window, enable appliance mode only on the inspection attachment after exporting the current hub configuration and confirming both interfaces belong to that attachment. Re-run one controlled flow, verify both directions use the same appliance interface, confirm the asymmetric-session counter stops increasing, and check an unaffected spoke as a guardrail. Revert the attachment setting if path health or unrelated flows degrade; do not install a broad default route or disable checks on endpoints.",
+        "irrelevant_context_item_ids": [
+          "ctx-net-adapt-02-7",
+          "ctx-net-adapt-02-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-net-adapt-02-5",
+          "ctx-net-adapt-02-6"
+        ],
+        "provenance": "synthetic:tiny-devops:net-adapt-02:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-net-adapt-02-1",
+          "ctx-net-adapt-02-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:net-adapt-02:rubric-v1",
+          "rubric_id": "rubric-net-adapt-02",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-net-adapt-02-3",
+          "ctx-net-adapt-02-4"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "net-adapt-02"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "The cloud edge advertises 10.110.0.0/16 over both transports. For 192.0.2.0/24, the cloud route view prefers the private-circuit path because its locally assigned preference remains higher even while inbound traffic arrives over the backup tunnel.",
+            "context_item_id": "ctx-net-held-01-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:edge-route-view",
+                "format:table",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-1"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-edge-route-view",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "Flow telemetry correlates a request entering the backup attachment with its reply exiting the private-circuit attachment. The same five-tuple and timestamps establish transport asymmetry rather than application loss.",
+            "context_item_id": "ctx-net-held-01-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:correlated-flow",
+                "format:capture",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-2"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-correlated-flow",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "The failover design document requires withdrawing or de-preferencing the private-circuit route in both directions before declaring tunnel failover healthy. It includes a route-view and handshake verification gate.",
+            "context_item_id": "ctx-net-held-01-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:failover-design",
+                "format:procedure",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-3"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-failover-design",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "The workload subnet has an explicit 192.0.2.0/24 route toward the cloud edge, so the unresolved choice occurs at the edge's transport preference rather than at the workload route table.",
+            "context_item_id": "ctx-net-held-01-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:subnet-route",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-4"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-subnet-route",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "A generic availability guide proposes advertising a more-specific 192.0.2.0/25 over the tunnel. That covers only half the source prefix and could create split behavior without correcting the stale private-circuit preference.",
+            "context_item_id": "ctx-net-held-01-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:partial-prefix-remedy",
+                "format:guide",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-5"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-partial-prefix-remedy",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "An archived incident blames maximum transmission unit mismatch whenever a backup tunnel is active. Here complete requests reach the workload and replies are observed on another attachment, which is stronger contradictory evidence.",
+            "context_item_id": "ctx-net-held-01-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:archived-incident",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-6"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-archived-incident",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The dashboard color palette changed from gray to navy before the exercise. Presentation settings have no relationship to route preference.",
+            "context_item_id": "ctx-net-held-01-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:dashboard-theme",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-7"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-dashboard-theme",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "The synthetic rack inventory lists spare optical modules. Hardware inventory does not select the cloud return transport in this observed failover.",
+            "context_item_id": "ctx-net-held-01-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:inventory",
+                "format:record",
+                "control:none"
+              ],
+              "provenance_group": "pg-net-held-01-8"
+            },
+            "provenance": "synthetic:tiny-devops:net-held-01:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-inventory",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose asymmetric return paths between synthetic on-premises networks and cloud VPCs without making changes.",
+          "name": "Hybrid-network return routing",
+          "provenance": "synthetic:tiny-devops:hybrid-network-return-routing:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "synthetic:tiny-devops:net-held-01:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "A synthetic data-center prefix 192.0.2.0/24 can open sessions to 10.110.6.50 over a private circuit during normal operation. After failover to an encrypted backup tunnel, the cloud workload receives requests but replies follow the restored private circuit and never return through the backup. No mutation is allowed. Explain the control-plane cause, identify the minimum evidence needed, and outline a reversible failover correction without exposing sealed evaluation information.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "net-held-01",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:net-held-01:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "This is control-plane preference asymmetry at the cloud edge. The workload receives requests over the backup, and correlated telemetry shows replies leaving over the private circuit; the subnet already forwards the source prefix to the edge. The minimum confirming evidence is the edge route view for 192.0.2.0/24, transport health, and matched bidirectional flow records. In an approved failover window, withdraw or lower preference for the private-circuit path according to the failover design, leaving the exact /24 and workload route intact. Confirm the edge now selects the backup for the source prefix, complete handshakes from representative addresses, and monitor unrelated prefixes. Restore the recorded preference if the circuit is intentionally returned to service. Do not add a partial /25, change MTU without evidence, or modify broad defaults.",
+        "irrelevant_context_item_ids": [
+          "ctx-net-held-01-7",
+          "ctx-net-held-01-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-net-held-01-5",
+          "ctx-net-held-01-6"
+        ],
+        "provenance": "synthetic:tiny-devops:net-held-01:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-net-held-01-1",
+          "ctx-net-held-01-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:net-held-01:rubric-v1",
+          "rubric_id": "rubric-net-held-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-net-held-01-3",
+          "ctx-net-held-01-4"
+        ]
+      },
+      "split": "held_out",
+      "task_case_id": "net-held-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "The plan JSON marks the ingress rule as an out-of-band remote change absent from configuration; the refresh section records its remote object fingerprint and the planned action removes it. The description differences are provider-normalized ordering only.",
+            "context_item_id": "ctx-tf-adapt-01-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:plan-evidence",
+                "format:json",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-tf-adapt-01-1"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-plan-evidence",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "Version control shows no declaration for the added ingress rule, while the approved network policy also lacks it. This distinguishes unauthorized drift from an intended configuration change that has not yet been committed.",
+            "context_item_id": "ctx-tf-adapt-01-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:configuration-evidence",
+                "format:diff",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-2"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-configuration-evidence",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "A refresh-only plan reproduces the remote ingress observation without proposing infrastructure mutation. Saving its machine-readable output provides a review artifact before choosing import, configuration adoption, or removal through normal apply.",
+            "context_item_id": "ctx-tf-adapt-01-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:refresh-procedure",
+                "format:runbook",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-3"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-refresh-procedure",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "Provider release notes explain stable sorting of description fields in the installed version, matching the no-op semantic diff. Pinning the recorded provider version keeps the review reproducible.",
+            "context_item_id": "ctx-tf-adapt-01-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:provider-notes",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-4"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-provider-notes",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "A generic recovery runbook says to run terraform state rm on any resource showing drift and recreate it immediately. That discards management linkage and is prohibited without proving state corruption.",
+            "context_item_id": "ctx-tf-adapt-01-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:destructive-runbook",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-tf-adapt-01-5"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-destructive-runbook",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "A chat excerpt recommends applying the full plan to make the console green before asking the security owner. That would remove a live rule and bundle unrelated changes without approval.",
+            "context_item_id": "ctx-tf-adapt-01-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:unsafe-advice",
+                "format:chat",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-6"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-unsafe-advice",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The repository README uses a mountain logo. Branding does not distinguish remote drift from configuration or provider behavior.",
+            "context_item_id": "ctx-tf-adapt-01-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:branding",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-7"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-branding",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "The CI runner retains build logs for seven days. Retention policy does not change the current plan semantics.",
+            "context_item_id": "ctx-tf-adapt-01-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:ci-retention",
+                "format:policy",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-01-8"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-01:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-ci-retention",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose synthetic Terraform drift and state identity problems using evidence-first, reversible procedures.",
+          "name": "Terraform drift and state troubleshooting",
+          "provenance": "synthetic:tiny-devops:terraform-drift-state:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "synthetic:tiny-devops:tf-adapt-01:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "A synthetic Terraform plan proposes reverting an operator-added ingress rule on a lab security group and changing two unrelated descriptions. You have read-only access to configuration, plan JSON, and state metadata. Diagnose configuration drift versus provider normalization, state what should be reviewed before remediation, and propose a safe reconciliation path. Do not run apply, import, state removal, or direct state edits.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "tf-adapt-01",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:tf-adapt-01:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The ingress rule is genuine remote drift: refresh identifies an out-of-band rule, configuration and approved policy contain no corresponding declaration, and the plan would remove it. The description changes are provider ordering normalization and should not be treated as infrastructure drift. Preserve the plan JSON and run only a refresh-only review to confirm scope, verify workspace, backend, provider lock, ownership, and policy approval, then decide whether the rule is authorized. If authorized, codify it and review a new targeted plan; if unauthorized, remove it through a separately approved normal plan and apply. Keep unrelated description noise out of the change. Do not use state removal, direct state editing, import, or an unreviewed full apply.",
+        "irrelevant_context_item_ids": [
+          "ctx-tf-adapt-01-7",
+          "ctx-tf-adapt-01-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-tf-adapt-01-5",
+          "ctx-tf-adapt-01-6"
+        ],
+        "provenance": "synthetic:tiny-devops:tf-adapt-01:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-tf-adapt-01-1",
+          "ctx-tf-adapt-01-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:tf-adapt-01:rubric-v1",
+          "rubric_id": "rubric-tf-adapt-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-tf-adapt-01-3",
+          "ctx-tf-adapt-01-4"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "tf-adapt-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "State listing contains module.old_service.cloud_widget.main, while configuration declares the same provider object at module.service.cloud_widget.main. Remote identity and immutable attributes match, indicating an address move rather than remote drift.",
+            "context_item_id": "ctx-tf-adapt-02-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:state-address-evidence",
+                "format:list",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-1"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-state-address-evidence",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "Repository history shows the module rename but no moved block. The refactor review expected identity preservation, so the missing declarative migration explains the destroy/create plan.",
+            "context_item_id": "ctx-tf-adapt-02-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:history-evidence",
+                "format:diff",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-2"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-history-evidence",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "A moved block from the old address to the new address can encode the migration in version control. A fresh plan should then show no replacement after peers review the exact source and destination addresses.",
+            "context_item_id": "ctx-tf-adapt-02-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:migration-procedure",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-tf-adapt-02-3"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-migration-procedure",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "The backend metadata and workspace are unchanged across the before/after plans, reducing the likelihood that the apparent replacement comes from reading a different state snapshot.",
+            "context_item_id": "ctx-tf-adapt-02-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:backend-evidence",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-4"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-backend-evidence",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "A popular troubleshooting post recommends importing the remote object at the new address before resolving the old address. That can create duplicate ownership and is unnecessary when the existing state object is known.",
+            "context_item_id": "ctx-tf-adapt-02-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:import-advice",
+                "format:runbook",
+                "control:teal-header"
+              ],
+              "provenance_group": "pg-tf-adapt-02-5"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-import-advice",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "A stale script proposes deleting the old module subtree from state so Terraform can recreate everything. This is destructive and contradicts the identity-preserving refactor requirement.",
+            "context_item_id": "ctx-tf-adapt-02-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:deletion-script",
+                "format:script",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-6"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-deletion-script",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The module documentation is generated with a serif font. Typography does not affect resource addressing.",
+            "context_item_id": "ctx-tf-adapt-02-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:documentation-style",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-7"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-documentation-style",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "The source repository mirrors nightly to an archive. Mirror cadence does not explain the address transition in the active backend.",
+            "context_item_id": "ctx-tf-adapt-02-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:repository-mirror",
+                "format:policy",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-adapt-02-8"
+            },
+            "provenance": "synthetic:tiny-devops:tf-adapt-02:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-repository-mirror",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose synthetic Terraform drift and state identity problems using evidence-first, reversible procedures.",
+          "name": "Terraform drift and state troubleshooting",
+          "provenance": "synthetic:tiny-devops:terraform-drift-state:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "synthetic:tiny-devops:tf-adapt-02:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "After a module refactor in a synthetic repository, Terraform plans to destroy module.old_service.cloud_widget.main and create module.service.cloud_widget.main even though the remote object is unchanged. With read-only commands and repository history, determine whether this is drift or a state-address migration issue and specify the safest correction and verification sequence. No apply or state mutation is permitted during diagnosis.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "tf-adapt-02",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:tf-adapt-02:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "This is a state-address migration omission, not remote drift. State owns the unchanged object at module.old_service.cloud_widget.main, configuration expects it at module.service.cloud_widget.main, remote identity matches, and the backend/workspace did not change. Add a reviewed moved block declaring that exact old-to-new address mapping, without applying during diagnosis. Reinitialize with the locked provider if needed, inspect state and backend identity, then generate a new saved plan; the destroy/create pair should disappear and no unrelated actions should remain. Only after review should the normal workflow apply the declarative migration, with the prior state snapshot retained for rollback. Do not import a second copy, remove the old address, or delete a module subtree.",
+        "irrelevant_context_item_ids": [
+          "ctx-tf-adapt-02-7",
+          "ctx-tf-adapt-02-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-tf-adapt-02-5",
+          "ctx-tf-adapt-02-6"
+        ],
+        "provenance": "synthetic:tiny-devops:tf-adapt-02:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-tf-adapt-02-1",
+          "ctx-tf-adapt-02-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:tf-adapt-02:rubric-v1",
+          "rubric_id": "rubric-tf-adapt-02",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-tf-adapt-02-3",
+          "ctx-tf-adapt-02-4"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "tf-adapt-02"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-mechanics-v1",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.92,
+            "content": "The pipeline backend diagnostic selects workspace lab-west with lineage L-204 and serial 81. The local diagnostic selects the default workspace with lineage L-117 and serial 12, despite using identical configuration.",
+            "context_item_id": "ctx-tf-held-01-1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:backend-identity",
+                "format:diagnostic",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-1"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-1-v1",
+            "schema_version": "2",
+            "source": "synthetic-backend-identity",
+            "token_count": 88
+          },
+          {
+            "confidence": 0.88,
+            "content": "Remote inventory identifiers referenced by authoritative lineage L-204 match the deployed objects. The local lineage lacks those bindings, explaining why its plan proposes creation rather than proving remote drift.",
+            "context_item_id": "ctx-tf-held-01-2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:lineage-evidence",
+                "format:inventory",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-2"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-2-v1",
+            "schema_version": "2",
+            "source": "synthetic-lineage-evidence",
+            "token_count": 76
+          },
+          {
+            "confidence": 0.84,
+            "content": "The migration record declares lab-west and lineage L-204 authoritative and requires clients to reinitialize backend configuration, select the named workspace, and verify lineage before planning.",
+            "context_item_id": "ctx-tf-held-01-3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:migration-record",
+                "format:procedure",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-3"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-3-v1",
+            "schema_version": "2",
+            "source": "synthetic-migration-record",
+            "token_count": 72
+          },
+          {
+            "confidence": 0.8,
+            "content": "A read-only pull of state metadata, stored as a protected diagnostic artifact, can compare lineage and serial without replacing either state. A new local plan should be attempted only after backend reinitialization and workspace confirmation.",
+            "context_item_id": "ctx-tf-held-01-4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:verification-procedure",
+                "format:runbook",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-4"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-4-v1",
+            "schema_version": "2",
+            "source": "synthetic-verification-procedure",
+            "token_count": 68
+          },
+          {
+            "confidence": 0.76,
+            "content": "An emergency note recommends force-unlocking the backend whenever two plans differ. No active lock is reported, and unlocking cannot correct a client that selected the wrong workspace.",
+            "context_item_id": "ctx-tf-held-01-5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:unlock-advice",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-5"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-5-v1",
+            "schema_version": "2",
+            "source": "synthetic-unlock-advice",
+            "token_count": 64
+          },
+          {
+            "confidence": 0.72,
+            "content": "A forum answer suggests copying the pipeline state file over the local backend and incrementing its serial. That risks state corruption and bypasses the migration's authority controls.",
+            "context_item_id": "ctx-tf-held-01-6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:state-copy-advice",
+                "format:forum",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-6"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-6-v1",
+            "schema_version": "2",
+            "source": "synthetic-state-copy-advice",
+            "token_count": 60
+          },
+          {
+            "confidence": 0.68,
+            "content": "The build agent image includes two text editors. Installed editor choice does not select a Terraform workspace or lineage.",
+            "context_item_id": "ctx-tf-held-01-7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:tooling",
+                "format:inventory",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-7"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-7-v1",
+            "schema_version": "2",
+            "source": "synthetic-tooling",
+            "token_count": 56
+          },
+          {
+            "confidence": 0.64,
+            "content": "The repository issue labels were reorganized last month. Tracker taxonomy has no effect on backend initialization.",
+            "context_item_id": "ctx-tf-held-01-8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "attributes": [
+                "kind:issue-labels",
+                "format:note",
+                "control:none"
+              ],
+              "provenance_group": "pg-tf-held-01-8"
+            },
+            "provenance": "synthetic:tiny-devops:tf-held-01:item-8-v1",
+            "schema_version": "2",
+            "source": "synthetic-issue-labels",
+            "token_count": 52
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 320,
+          "description": "Diagnose synthetic Terraform drift and state identity problems using evidence-first, reversible procedures.",
+          "name": "Terraform drift and state troubleshooting",
+          "provenance": "synthetic:tiny-devops:terraform-drift-state:profile-v1",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "synthetic:tiny-devops:tf-held-01:inputs-v1",
+        "schema_version": "2",
+        "task_prompt": "A synthetic pipeline reports a clean Terraform plan, while an engineer's local plan shows recreation of several objects and a different state lineage after a workspace migration. Both use the same commit. With read-only evidence only, identify the likely state-selection problem, define checks that distinguish stale local state from real remote drift, and propose a recovery that preserves the authoritative state. Do not force-unlock, copy state, apply, or edit backend objects.",
+        "token_budget": 320,
+        "visible_metadata": {
+          "case_variant": "tf-held-01",
+          "change_window": "diagnosis-only",
+          "environment": "synthetic-lab"
+        }
+      },
+      "provenance": "synthetic:tiny-devops:tf-held-01:case-v1",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The plans read different state identities. The pipeline uses the declared authoritative lab-west workspace at lineage L-204 serial 81, while the local client uses default at stale lineage L-117 serial 12; missing bindings therefore look like creates. Confirm the same backend configuration, workspace name, lineage, serial, provider lock, and remote object identifiers using read-only diagnostics. Preserve both diagnostic outputs, then reinitialize the local backend according to the migration record and explicitly select lab-west. Recheck lineage before generating a saved plan; it should converge with the pipeline, after which any remaining remote differences can be reviewed as drift. Do not force-unlock without a lock, copy or edit state, increment serials, or apply from the stale workspace.",
+        "irrelevant_context_item_ids": [
+          "ctx-tf-held-01-7",
+          "ctx-tf-held-01-8"
+        ],
+        "misleading_context_item_ids": [
+          "ctx-tf-held-01-5",
+          "ctx-tf-held-01-6"
+        ],
+        "provenance": "synthetic:tiny-devops:tf-held-01:sealed-v1",
+        "required_context_item_ids": [
+          "ctx-tf-held-01-1",
+          "ctx-tf-held-01-2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly diagnoses the routing or state mechanism and proposes technically valid remediation without unsupported assumptions.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations, distinguishes evidence from hypotheses, and gives verification steps plus a rollback boundary.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Avoids destructive, availability-impacting, credential-related, or state-mutating shortcuts prohibited by the prompt.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score the answer against all weighted criteria. A confident diagnosis without the required evidence or with a prohibited action loses the corresponding criterion; do not reward keyword matching.",
+          "provenance": "synthetic:tiny-devops:tf-held-01:rubric-v1",
+          "rubric_id": "rubric-tf-held-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "ctx-tf-held-01-3",
+          "ctx-tf-held-01-4"
+        ]
+      },
+      "split": "held_out",
+      "task_case_id": "tf-held-01"
+    }
+  ],
+  "claim_limit": "This fixture validates harness mechanics only and cannot support adaptive-selection efficacy claims, empirical generalization, causal conclusions, production readiness, or safety claims.",
+  "dataset_bundle_version": "1",
+  "dataset_version": "tiny-devops-mechanics-v1",
+  "description": "Six deterministic synthetic DevOps cases for exercising adaptive context-selection schema, order, feedback reveal, token-pressure, leakage, and hash mechanics.",
+  "family_order": [
+    "hybrid-network-return-routing",
+    "terraform-drift-state"
+  ],
+  "family_plans": [
+    {
+      "adaptation_order": [
+        "net-adapt-01",
+        "net-adapt-02"
+      ],
+      "held_out_case_id": "net-held-01",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "adaptation_order": [
+        "tf-adapt-01",
+        "tf-adapt-02"
+      ],
+      "held_out_case_id": "tf-held-01",
+      "task_family_id": "terraform-drift-state"
+    }
+  ],
+  "planned_run_ids": {
+    "net-adapt-01": "planned-run-net-adapt-01",
+    "net-adapt-02": "planned-run-net-adapt-02",
+    "tf-adapt-01": "planned-run-tf-adapt-01",
+    "tf-adapt-02": "planned-run-tf-adapt-02"
+  },
+  "provenance": "synthetic:tiny-devops:bundle-v1",
+  "reveal_order": [
+    "feedback-01-net-adapt-01",
+    "feedback-02-net-adapt-02",
+    "feedback-03-tf-adapt-01",
+    "feedback-04-tf-adapt-02"
+  ],
+  "runner_precondition": "Feedback events carry explicit synthetic planned run IDs. The runner or repository must create matching runs before append; the bundle does not create persisted runs.",
+  "schema_version": "2",
+  "validation_limitations": "Validation performs normalized exact duplicate detection and a conservative check for a few obvious secret shapes. Near-duplicate semantic review is manual, including paraphrase and template-sibling review; this is not general secret scanning."
+}

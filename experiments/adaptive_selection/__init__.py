@@ -1,5 +1,14 @@
-"""Versioned records and append-only evidence storage for adaptive experiments."""
+"""Adaptive experiment records, evidence storage, and tiny-corpus loading."""
 
+from .dataset import (
+    DATASET_BUNDLE_VERSION,
+    DatasetBundle,
+    FamilyPlan,
+    canonical_bundle_sha256,
+    load_dataset_bundle,
+    load_tiny_fixture,
+    validate_tiny_fixture,
+)
 from .repository import (
     DuplicateRecordError,
     EvidenceEntry,
@@ -32,6 +41,13 @@ from .schema import (
 )
 
 __all__ = [
+    "DATASET_BUNDLE_VERSION",
+    "DatasetBundle",
+    "FamilyPlan",
+    "canonical_bundle_sha256",
+    "load_dataset_bundle",
+    "load_tiny_fixture",
+    "validate_tiny_fixture",
     "ExperimentRepository",
     "EvidenceEntry",
     "IntegrityReport",
