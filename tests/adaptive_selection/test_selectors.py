@@ -1,4 +1,5 @@
 import inspect
+import math
 from dataclasses import replace
 from pathlib import Path
 
@@ -285,13 +286,104 @@ def test_invalid_policy_configuration_and_nonfinite_utilities_are_rejected():
 
 @pytest.mark.parametrize(
     "key",
-    ["candidate-123", "source:private", "provenance:private", "metadata.path:value"],
+    [
+        "candidate-123",
+        "unknown:value",
+        "candidate:q7m2",
+        "secret:opaque",
+        "source:private",
+        "id:private",
+        "provenance:private",
+        "metadata:path",
+    ],
 )
 def test_policy_mappings_reject_non_reusable_feature_keys(key):
     with pytest.raises(ValueError, match="feature|namespace"):
         StaticPolicySelector(feature_weights={key: 1.0})
     with pytest.raises(ValueError, match="feature|namespace"):
         AdaptivePolicySelector(utility_estimates={key: 1.0})
+
+
+@pytest.mark.parametrize(
+    "namespace",
+    [
+        "unknown",
+        "candidate",
+        "secret",
+        "source",
+        "id",
+        "provenance",
+        "metadata",
+    ],
+)
+@pytest.mark.parametrize(
+    "field", ["learning_attributes", "control_attributes", "format"]
+)
+def test_unapproved_namespaces_cannot_reach_callbacks_or_selection(field, namespace):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    feature = "{}:opaque".format(namespace)
+    value = feature if field == "format" else (feature,)
+    candidates = tuple(
+        replace(
+            item,
+            metadata={field: value},
+        )
+        for item in inputs.candidate_context[:2]
+    )
+    constrained = replace(inputs, candidate_context=candidates, token_budget=10_000)
+    seen = []
+
+    adaptive = AdaptivePolicySelector(
+        utility_estimates=lambda feature: seen.append(feature) or 10.0,
+        feature_weights={},
+        relevance_weight=0.0,
+        importance_weight=1.0,
+    ).select(constrained)
+    static = StaticPolicySelector(
+        feature_weights={}, relevance_weight=0.0, importance_weight=1.0
+    ).select(constrained)
+
+    assert seen == []
+    assert not adaptive.selected_items
+    assert not static.selected_items
+    assert all(decision.reason == "processing_error" for decision in adaptive.decisions)
+    assert all(decision.reason == "processing_error" for decision in static.decisions)
+
+
+@pytest.mark.parametrize(
+    "namespace",
+    [
+        "confidence",
+        "action",
+        "basis",
+        "scope",
+        "signal",
+        "presentation",
+        "format",
+        "task_family",
+        "memory_kind",
+        "context_role",
+        "tag",
+        "capability",
+        "relevance",
+        "recency",
+    ],
+)
+def test_frozen_reusable_feature_namespace_vocabulary_is_supported(namespace):
+    feature = "{}:neutral".format(namespace)
+    assert (
+        feature in StaticPolicySelector(feature_weights={feature: 1.0}).feature_weights
+    )
+    AdaptivePolicySelector(utility_estimates={feature: 1.0})
+
+
+def test_metadata_format_remains_restricted_to_format_namespace():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    item = replace(inputs.candidate_context[0], metadata={"format": "signal:neutral"})
+
+    result = StaticPolicySelector().select(replace(inputs, candidate_context=(item,)))
+
+    assert result.decisions[0].reason == "processing_error"
 
 
 def test_sources_and_arbitrary_metadata_never_reach_callbacks_or_factors():
@@ -347,6 +439,63 @@ def test_unsafe_approved_metadata_values_are_explicitly_rejected(field, unsafe_k
     assert result.decisions[0].reason == "processing_error"
     assert unsafe not in seen
     assert unsafe not in repr(result.decisions[0].score_factors)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "re-quired",
+        "requ.ired",
+        "use-ful",
+        "mis.leading",
+        "held-out",
+        "adap_tation",
+        "Re-QuIrEd",
+        "USE.FUL",
+    ],
+)
+@pytest.mark.parametrize(
+    "field", ["learning_attributes", "control_attributes", "format"]
+)
+def test_punctuation_obfuscated_labels_are_rejected_in_all_approved_fields(
+    field, label
+):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    item = inputs.candidate_context[0]
+    namespace = "format" if field == "format" else "signal"
+    feature = "{}:{}".format(namespace, label)
+    value = feature if field == "format" else (feature,)
+    poisoned = replace(item, metadata=dict(item.metadata, **{field: value}))
+    seen = []
+
+    result = AdaptivePolicySelector(
+        utility_estimates=lambda name: seen.append(name) or 1.0
+    ).select(replace(inputs, candidate_context=(poisoned,)))
+
+    assert result.decisions[0].reason == "processing_error"
+    assert feature not in seen
+    assert feature not in repr(result.decisions[0].score_factors)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "re-quired",
+        "requ.ired",
+        "use-ful",
+        "mis.leading",
+        "held-out",
+        "adap_tation",
+        "Re-QuIrEd",
+        "USE.FUL",
+    ],
+)
+def test_punctuation_obfuscated_labels_are_rejected_in_policy_mappings(label):
+    feature = "signal:{}".format(label)
+    with pytest.raises(ValueError, match="feature|evaluation"):
+        StaticPolicySelector(feature_weights={feature: 1.0})
+    with pytest.raises(ValueError, match="feature|evaluation"):
+        AdaptivePolicySelector(utility_estimates={feature: 1.0})
 
 
 def test_stateful_callback_is_snapshotted_once_per_unique_shared_feature():
@@ -417,12 +566,12 @@ def test_callback_failure_is_cached_once_and_repeats_deterministically(nonfinite
     assert "backend detail" not in repr(first)
 
 
-def test_raw_scores_are_logistically_normalized_and_trace_pipeline_math():
+def test_raw_scores_are_pool_normalized_and_trace_pipeline_math():
     inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
     features_and_weights = (
-        ("group:above-one-a", 2.0),
-        ("group:above-one-b", 3.0),
-        ("group:below-zero", -1.0),
+        ("signal:above-one-a", 2.0),
+        ("signal:above-one-b", 3.0),
+        ("signal:below-zero", -1.0),
     )
     candidates = tuple(
         replace(
@@ -457,8 +606,10 @@ def test_raw_scores_are_logistically_normalized_and_trace_pipeline_math():
         factors = decision.score_factors
         assert factors["policy.static.raw_score"] == raw_score
         assert factors["policy.raw_score"] == raw_score
-        assert factors["policy.normalization_method"] == "logistic"
-        assert 0.0 < factors["policy.effective_importance"] < 1.0
+        assert factors["policy.normalization_method"] == "candidate_pool_min_max"
+        assert factors["policy.pool_raw_min"] == -1.0
+        assert factors["policy.pool_raw_max"] == 3.0
+        assert 0.0 <= factors["policy.effective_importance"] <= 1.0
         assert factors["retrieval.importance"] == factors["policy.effective_importance"]
         assert (
             factors["retrieval.weighted_importance"]
@@ -467,6 +618,101 @@ def test_raw_scores_are_logistically_normalized_and_trace_pipeline_math():
         assert factors["retrieval.final_score"] == decision.score
         assert decision.score == factors["policy.effective_importance"]
         assert "static.score" not in factors
+
+
+def _importance_only_result(inputs, features_and_weights):
+    candidates = tuple(
+        replace(
+            inputs.candidate_context[index],
+            confidence=0.5,
+            metadata={"learning_attributes": (feature,)},
+        )
+        for index, (feature, _weight) in enumerate(features_and_weights)
+    )
+    result = StaticPolicySelector(
+        feature_weights=dict(features_and_weights),
+        relevance_weight=0.0,
+        importance_weight=1.0,
+    ).select(
+        replace(
+            inputs,
+            task_prompt="terms absent everywhere",
+            candidate_context=candidates,
+            token_budget=10_000,
+        )
+    )
+    return candidates, result
+
+
+def test_pool_normalization_preserves_100_vs_101_in_reverse_candidate_order():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    candidates, result = _importance_only_result(
+        inputs, (("signal:raw-100", 100.0), ("signal:raw-101", 101.0))
+    )
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidates[1].context_item_id,
+        candidates[0].context_item_id,
+    ]
+    by_id = {decision.context_item_id: decision for decision in result.decisions}
+    assert (
+        by_id[candidates[1].context_item_id].score_factors[
+            "policy.effective_importance"
+        ]
+        == 1.0
+    )
+    assert (
+        by_id[candidates[0].context_item_id].score_factors[
+            "policy.effective_importance"
+        ]
+        == 0.0
+    )
+
+
+def test_pool_normalization_orders_negative_raw_scores():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    candidates, result = _importance_only_result(
+        inputs, (("signal:negative-two", -2.0), ("signal:negative-one", -1.0))
+    )
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidates[1].context_item_id,
+        candidates[0].context_item_id,
+    ]
+
+
+def test_equal_pool_scores_map_to_neutral_and_preserve_candidate_order():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    candidates, result = _importance_only_result(
+        inputs, (("signal:equal-a", 7.0), ("signal:equal-b", 7.0))
+    )
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidate.context_item_id for candidate in candidates
+    ]
+    assert all(
+        decision.score_factors["policy.effective_importance"] == 0.5
+        for decision in result.decisions
+    )
+
+
+def test_pool_normalization_is_overflow_safe_for_extreme_mixed_sign_scores():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    extreme = float.fromhex("0x1.fffffffffffffp+1023")
+    candidates, result = _importance_only_result(
+        inputs,
+        (("signal:extreme-negative", -extreme), ("signal:extreme-positive", extreme)),
+    )
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidates[1].context_item_id,
+        candidates[0].context_item_id,
+    ]
+    assert all(math.isfinite(decision.score) for decision in result.decisions)
+    assert all(
+        math.isfinite(float(decision.score_factors["policy.effective_importance"]))
+        for decision in result.decisions
+    )
 
 
 def test_negative_adaptive_utility_trace_separates_raw_and_effective_scores():

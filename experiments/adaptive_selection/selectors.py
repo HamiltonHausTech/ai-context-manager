@@ -75,8 +75,23 @@ _APPROVED_METADATA_FIELDS = (
     "format",
     "learning_attributes",
 )
-_FORBIDDEN_FEATURE_NAMESPACES = frozenset(
-    {"context_item_id", "id", "metadata", "provenance", "source"}
+_APPROVED_FEATURE_NAMESPACES = frozenset(
+    {
+        "action",
+        "basis",
+        "capability",
+        "confidence",
+        "context_role",
+        "format",
+        "memory_kind",
+        "presentation",
+        "recency",
+        "relevance",
+        "scope",
+        "signal",
+        "tag",
+        "task_family",
+    }
 )
 
 
@@ -87,17 +102,24 @@ def _validate_feature_name(
 
     Reusable features have a strict ``namespace:value`` grammar.  Evaluation-label
     vocabulary and strings containing any candidate ID are forbidden even in approved
-    metadata fields; rejecting them is safer than manufacturing a policy key from them.
+    metadata fields.  The namespace allowlist is the frozen reusable-feature vocabulary
+    for the Stage 0 ontology and planned policy features; all other namespaces are
+    rejected rather than inferred.  Rejecting ambiguous values is safer than
+    manufacturing a policy key from them.
     """
 
-    if not isinstance(feature, str) or not _FEATURE_RE.fullmatch(feature):
+    if not isinstance(feature, str):
         raise ValueError("{} must be a safe namespaced feature".format(name))
     normalized = feature.casefold()
-    if normalized.split(":", 1)[0] in _FORBIDDEN_FEATURE_NAMESPACES:
-        raise ValueError("{} uses a non-reusable namespace".format(name))
-    terms = set(re.findall(r"[a-z0-9]+", normalized))
-    if terms & _RESERVED_FEATURE_TERMS or {"held", "out"} <= terms:
+    screening_text = re.sub(r"[^a-z0-9]+", "", normalized)
+    if any(term in screening_text for term in _RESERVED_FEATURE_TERMS):
         raise ValueError("{} contains reserved evaluation vocabulary".format(name))
+    if not _FEATURE_RE.fullmatch(feature):
+        raise ValueError("{} must be a safe namespaced feature".format(name))
+    if normalized.split(":", 1)[0] not in _APPROVED_FEATURE_NAMESPACES:
+        raise ValueError(
+            "{} uses an unapproved reusable-feature namespace".format(name)
+        )
     if any(candidate_id.casefold() in normalized for candidate_id in candidate_ids):
         raise ValueError("{} contains a candidate ID".format(name))
     return feature
@@ -138,17 +160,34 @@ def _visible_features(
     return tuple(sorted(set(features)))
 
 
-def _logistic(raw_score: float) -> float:
-    """Map finite raw scores to ``[0, 1]`` with a stable logistic transform.
+def _normalize_pool_scores(raw_scores: Sequence[float]) -> Tuple[float, ...]:
+    """Min-max normalize a complete finite candidate pool without overflow.
 
-    This monotonic normalization preserves ordinary raw-policy ordering without the
-    saturation ties caused by RetrievalPipeline's defensive hard clamp.
+    Scaling all values before subtraction avoids overflow for mixed-sign extrema.
+    Equal pools map to the documented neutral importance ``0.5``; stable sorting in the
+    retrieval pipeline then preserves candidate order.
     """
 
-    if raw_score >= 0.0:
-        return 1.0 / (1.0 + math.exp(-raw_score))
-    exponential = math.exp(raw_score)
-    return exponential / (1.0 + exponential)
+    if not raw_scores:
+        return ()
+    raw_min = min(raw_scores)
+    raw_max = max(raw_scores)
+    if raw_min == raw_max:
+        return tuple(0.5 for _score in raw_scores)
+    scale = max(abs(raw_min), abs(raw_max))
+    scaled_min = raw_min / scale
+    scaled_max = raw_max / scale
+    span = scaled_max - scaled_min
+    normalized = []
+    for raw_score in raw_scores:
+        if raw_score == raw_min:
+            value = 0.0
+        elif raw_score == raw_max:
+            value = 1.0
+        else:
+            value = ((raw_score / scale) - scaled_min) / span
+        normalized.append(max(0.0, min(1.0, value)))
+    return tuple(normalized)
 
 
 class _ContextItemComponent(ContextComponent):
@@ -372,7 +411,7 @@ class StaticPolicySelector(_BaseSelector):
         self, item: ContextItem, candidate_ids: Sequence[str]
     ) -> Tuple[float, Dict[str, ScoreValue]]:
         factors: Dict[str, ScoreValue] = {}
-        raw_score = self.feature_weights.get("confidence", 0.0) * item.confidence
+        contributions = [self.feature_weights.get("confidence", 0.0) * item.confidence]
         factors["policy.static.confidence"] = item.confidence
         factors["policy.static.confidence_weight"] = self.feature_weights.get(
             "confidence", 0.0
@@ -381,13 +420,14 @@ class StaticPolicySelector(_BaseSelector):
             weight = self.feature_weights.get(feature, 0.0)
             if weight:
                 factors["policy.static.feature_weight.{}".format(feature)] = weight
-                raw_score += weight
+                contributions.append(weight)
+        try:
+            raw_score = _finite("raw policy score", math.fsum(contributions))
+        except OverflowError as exc:
+            raise ValueError("raw policy score must be finite") from exc
         factors["policy.static.raw_score"] = raw_score
         factors["policy.raw_score"] = raw_score
-        factors["policy.normalization_method"] = "logistic"
-        effective_importance = _logistic(raw_score)
-        factors["policy.effective_importance"] = effective_importance
-        return effective_importance, factors
+        return raw_score, factors
 
     def _rank(
         self,
@@ -397,7 +437,7 @@ class StaticPolicySelector(_BaseSelector):
         initial: list,
         candidate_ids: Sequence[str],
     ) -> Sequence[tuple]:
-        details = {}
+        details: Dict[int, Tuple[float, Dict[str, ScoreValue]]] = {}
         rankable = []
         for component in eligible:
             try:
@@ -419,7 +459,25 @@ class StaticPolicySelector(_BaseSelector):
                         {},
                     )
                 )
-        pipeline.score_component = lambda component: details[id(component)][0]
+        raw_scores = tuple(details[id(component)][0] for component in rankable)
+        effective_importance = _normalize_pool_scores(raw_scores)
+        pool_min = min(raw_scores) if raw_scores else 0.0
+        pool_max = max(raw_scores) if raw_scores else 0.0
+        normalized_by_component = {
+            id(component): normalized
+            for component, normalized in zip(rankable, effective_importance)
+        }
+        for component in rankable:
+            factors = details[id(component)][1]
+            factors["policy.normalization_method"] = "candidate_pool_min_max"
+            factors["policy.pool_raw_min"] = pool_min
+            factors["policy.pool_raw_max"] = pool_max
+            factors["policy.effective_importance"] = normalized_by_component[
+                id(component)
+            ]
+        pipeline.score_component = lambda component: normalized_by_component[
+            id(component)
+        ]
         ranked = pipeline.rank_candidates(rankable, request)
         enriched = []
         for ranked_item in ranked:
@@ -537,23 +595,32 @@ class AdaptivePolicySelector(StaticPolicySelector):
     def _score_details(
         self, item: ContextItem, candidate_ids: Sequence[str]
     ) -> Tuple[float, Dict[str, ScoreValue]]:
-        _static_effective, factors = super()._score_details(item, candidate_ids)
-        static_raw_score = float(factors["policy.static.raw_score"])
-        utility = 0.0
+        static_raw_score, factors = super()._score_details(item, candidate_ids)
+        utility_contributions = []
         for feature in _visible_features(item, candidate_ids):
             estimate = self._utility(feature)
             if estimate:
                 factors["policy.adaptive.feature_utility.{}".format(feature)] = estimate
-                utility += estimate
-        contribution = self.learning_weight * utility
-        raw_score = static_raw_score + contribution
+                utility_contributions.append(estimate)
+        try:
+            utility = _finite("adaptive raw utility", math.fsum(utility_contributions))
+        except OverflowError as exc:
+            raise ValueError("adaptive raw utility must be finite") from exc
+        contribution = _finite(
+            "weighted utility contribution", self.learning_weight * utility
+        )
+        try:
+            raw_score = _finite(
+                "raw policy score", math.fsum((static_raw_score, contribution))
+            )
+        except OverflowError as exc:
+            raise ValueError("raw policy score must be finite") from exc
         factors["policy.adaptive.raw_utility"] = utility
         factors["policy.adaptive.learning_weight"] = self.learning_weight
         factors["policy.adaptive.weighted_utility_contribution"] = contribution
         factors["policy.adaptive.raw_score"] = raw_score
         factors["policy.raw_score"] = raw_score
-        factors["policy.effective_importance"] = _logistic(raw_score)
-        return float(factors["policy.effective_importance"]), factors
+        return raw_score, factors
 
 
 __all__ = [
