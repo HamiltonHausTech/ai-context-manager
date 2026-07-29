@@ -16,6 +16,12 @@ from .dataset import (
     load_tiny_fixture,
     validate_tiny_fixture,
 )
+from .learning import (
+    IDLocalUtilityEstimate,
+    LearningPolicy,
+    LearningSnapshot,
+    learn_utilities,
+)
 from .repository import (
     DuplicateRecordError,
     EvidenceEntry,
@@ -34,6 +40,8 @@ from .selectors import (
     SelectorDecision,
     SimilarityTopKSelector,
     StaticPolicySelector,
+    reusable_features,
+    validate_reusable_feature,
 )
 from .schema import (
     FEEDBACK_SIGNAL_TYPES,
@@ -70,6 +78,10 @@ __all__ = [
     "load_dataset_bundle",
     "load_tiny_fixture",
     "validate_tiny_fixture",
+    "IDLocalUtilityEstimate",
+    "LearningPolicy",
+    "LearningSnapshot",
+    "learn_utilities",
     "ExperimentRepository",
     "EvidenceEntry",
     "IntegrityReport",
@@ -85,6 +97,8 @@ __all__ = [
     "SelectorDecision",
     "SimilarityTopKSelector",
     "StaticPolicySelector",
+    "reusable_features",
+    "validate_reusable_feature",
     "SCHEMA_VERSION",
     "FEEDBACK_SIGNAL_TYPES",
     "FEEDBACK_SOURCES",
