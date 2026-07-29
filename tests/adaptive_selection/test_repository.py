@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 import pytest
 
 from experiments.adaptive_selection.repository import (
+    _APPEND_ONLY_TABLES,
+    _append_only_trigger_sql,
     DuplicateRecordError,
     ExperimentRepository,
     IntegrityError,
@@ -147,6 +149,17 @@ def append_complete(repo):
     return run, decision, outcome, feedback, estimate, result
 
 
+def replace_trigger(connection, table, operation, replacement_sql=None):
+    trigger_name = f"{table}_no_{operation.lower()}"
+    connection.execute(f"DROP TRIGGER {trigger_name}")
+    if replacement_sql is not None:
+        connection.execute(replacement_sql)
+
+
+def restore_trigger(connection, table, operation):
+    connection.execute(_append_only_trigger_sql(table, operation))
+
+
 def test_complete_run_typed_round_trip_integrity_and_canonical_json():
     expected = records()
     with repository() as repo:
@@ -257,20 +270,116 @@ def test_duplicate_record_id_is_rejected_explicitly_without_extra_evidence():
         assert len(repo.list_evidence()) == 1
 
 
-def test_sql_update_and_delete_are_blocked_by_triggers(tmp_path):
+def test_all_repository_tables_block_sql_updates_and_deletes(tmp_path):
     path = tmp_path / "evidence.sqlite3"
     with repository(path) as repo:
         append_complete(repo)
 
     with sqlite3.connect(path) as connection:
-        for statement in (
-            "UPDATE evidence_log SET payload_hash = 'bad' WHERE sequence = 1",
-            "DELETE FROM evidence_log WHERE sequence = 1",
-            "UPDATE outcomes SET execution_status = 'failure' WHERE outcome_id = 'outcome-1'",
-            "DELETE FROM model_outputs WHERE outcome_id = 'outcome-1'",
-        ):
-            with pytest.raises(sqlite3.IntegrityError, match="append-only"):
-                connection.execute(statement)
+        for table in _APPEND_ONLY_TABLES:
+            with pytest.raises(
+                sqlite3.IntegrityError, match=f"append-only table: {table}"
+            ):
+                connection.execute(f"UPDATE {table} SET rowid = rowid")
+            with pytest.raises(
+                sqlite3.IntegrityError, match=f"append-only table: {table}"
+            ):
+                connection.execute(f"DELETE FROM {table}")
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda connection: replace_trigger(connection, "evidence_log", "UPDATE"),
+        lambda connection: replace_trigger(
+            connection,
+            "evidence_log",
+            "UPDATE",
+            """CREATE TRIGGER evidence_log_no_update
+               BEFORE UPDATE ON evidence_log BEGIN SELECT 1; END""",
+        ),
+        lambda connection: replace_trigger(
+            connection,
+            "evidence_log",
+            "UPDATE",
+            """CREATE TRIGGER evidence_log_no_update
+               AFTER UPDATE ON evidence_log
+               BEGIN SELECT RAISE(ABORT, 'append-only table: evidence_log'); END""",
+        ),
+        lambda connection: replace_trigger(
+            connection,
+            "evidence_log",
+            "UPDATE",
+            """CREATE TRIGGER evidence_log_no_update
+               BEFORE UPDATE ON experiment_runs
+               BEGIN SELECT RAISE(ABORT, 'append-only table: evidence_log'); END""",
+        ),
+        lambda connection: replace_trigger(
+            connection,
+            "evidence_log",
+            "UPDATE",
+            """CREATE TRIGGER evidence_log_no_update
+               BEFORE UPDATE ON evidence_log
+               BEGIN SELECT RAISE(ABORT, 'append-only  table: evidence_log'); END""",
+        ),
+    ],
+    ids=["missing", "inert", "wrong-timing", "wrong-table", "wrong-raise-body"],
+)
+def test_existing_repository_rejects_missing_or_forged_trigger_on_open(
+    tmp_path, tamper
+):
+    path = tmp_path / "tampered-trigger.sqlite3"
+    with repository(path):
+        pass
+    with sqlite3.connect(path) as connection:
+        tamper(connection)
+
+    with pytest.raises(IntegrityError, match="append-only trigger"):
+        repository(path)
+
+
+def test_failed_open_closes_its_connection(tmp_path, monkeypatch):
+    path = tmp_path / "failed-open.sqlite3"
+    with repository(path):
+        pass
+    with sqlite3.connect(path) as connection:
+        replace_trigger(connection, "evidence_log", "DELETE")
+
+    opened = []
+    real_connect = sqlite3.connect
+
+    def tracking_connect(*args, **kwargs):
+        connection = real_connect(*args, **kwargs)
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.repository.sqlite3.connect", tracking_connect
+    )
+    with pytest.raises(IntegrityError, match="append-only trigger"):
+        repository(path)
+
+    assert len(opened) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        opened[0].execute("SELECT 1")
+
+
+@pytest.mark.parametrize("tamper_kind", ["missing", "inert"])
+def test_integrity_scan_rejects_trigger_tampering_after_open(tmp_path, tamper_kind):
+    path = tmp_path / "post-open-trigger.sqlite3"
+    repo = repository(path)
+    try:
+        with sqlite3.connect(path) as connection:
+            replacement = None
+            if tamper_kind == "inert":
+                replacement = """CREATE TRIGGER outcomes_no_delete
+                    BEFORE DELETE ON outcomes BEGIN SELECT 1; END"""
+            replace_trigger(connection, "outcomes", "DELETE", replacement)
+
+        with pytest.raises(IntegrityError, match="append-only trigger"):
+            repo.verify_integrity()
+    finally:
+        repo.close()
 
 
 def test_failed_foreign_reference_rolls_back_without_evidence_row():
@@ -350,10 +459,11 @@ def test_hash_tampering_is_detected_on_load_and_integrity_scan(tmp_path):
         repo.append_run(records()[0])
 
     with sqlite3.connect(path) as connection:
-        connection.execute("DROP TRIGGER evidence_log_no_update")
+        replace_trigger(connection, "evidence_log", "UPDATE")
         connection.execute(
             "UPDATE evidence_log SET payload_json = replace(payload_json, 'abc123', 'def456')"
         )
+        restore_trigger(connection, "evidence_log", "UPDATE")
 
     with repository(path) as repo:
         with pytest.raises(IntegrityError, match="payload hash mismatch"):
@@ -380,10 +490,11 @@ def test_model_outputs_is_bounded_projection_and_integrity_checks_it(tmp_path):
             "model_input_tokens, model_output_tokens FROM model_outputs"
         ).fetchone()
         assert row == ("run-1", "case-1", "decision-1", "success", 20, 4)
-        connection.execute("DROP TRIGGER model_outputs_no_update")
+        replace_trigger(connection, "model_outputs", "UPDATE")
         connection.execute(
             "UPDATE model_outputs SET model_output_tokens = 99 WHERE outcome_id = 'outcome-1'"
         )
+        restore_trigger(connection, "model_outputs", "UPDATE")
 
     with repository(path) as repo:
         with pytest.raises(IntegrityError, match="model_outputs projection mismatch"):
@@ -454,6 +565,57 @@ def test_schema_v1_raw_payload_is_rejected_by_integrity_scan(tmp_path):
 
     with repository(path) as repo:
         with pytest.raises(IntegrityError, match="unsupported schema_version: 1"):
+            repo.verify_integrity()
+
+
+def test_microsecond_insertion_timestamp_is_canonical_and_valid():
+    inserted_at = datetime(2026, 7, 28, 13, 0, 0, 123456, tzinfo=timezone.utc)
+    with ExperimentRepository(":memory:", clock=lambda: inserted_at) as repo:
+        repo.append_run(records()[0])
+
+        assert repo.list_evidence()[0].inserted_timestamp == (
+            "2026-07-28T13:00:00.123456Z"
+        )
+        assert repo.verify_integrity().ok
+
+
+@pytest.mark.parametrize(
+    "tampered_timestamp",
+    [
+        "not-a-timestamp",
+        "2026-07-28T13:00:00",
+        "2026-07-28T13:00:00+00:00",
+        "2026-07-28T09:00:00-04:00",
+        "2026-07-28T13:00:00.1Z",
+        "2026-07-28T13:00:00.000000Z",
+    ],
+    ids=[
+        "malformed",
+        "timezone-less",
+        "utc-offset",
+        "non-utc-offset",
+        "short-fraction",
+        "zero-fraction",
+    ],
+)
+def test_tampered_insertion_timestamp_is_rejected_on_decode_and_integrity(
+    tmp_path, tampered_timestamp
+):
+    path = tmp_path / "timestamp.sqlite3"
+    with repository(path) as repo:
+        repo.append_run(records()[0])
+
+    with sqlite3.connect(path) as connection:
+        replace_trigger(connection, "evidence_log", "UPDATE")
+        connection.execute(
+            "UPDATE evidence_log SET inserted_timestamp = ?", (tampered_timestamp,)
+        )
+        restore_trigger(connection, "evidence_log", "UPDATE")
+
+    with repository(path) as repo:
+        with pytest.raises(IntegrityError, match="invalid insertion timestamp"):
+            repo.load_run("run-1")
+        with pytest.raises(IntegrityError, match="invalid insertion timestamp"):
             repo.verify_integrity()
 
 

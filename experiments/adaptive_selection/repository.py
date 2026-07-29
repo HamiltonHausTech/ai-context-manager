@@ -213,6 +213,73 @@ _APPEND_ONLY_TABLES = (
     "utility_estimates",
     "experiment_results",
 )
+_APPEND_ONLY_OPERATIONS = ("UPDATE", "DELETE")
+
+
+def _append_only_trigger_sql(table: str, operation: str) -> str:
+    """Return authoritative SQL for one repository-owned append-only guard."""
+    if table not in _APPEND_ONLY_TABLES or operation not in _APPEND_ONLY_OPERATIONS:
+        raise ValueError("unsupported append-only trigger")
+    trigger_name = f"{table}_no_{operation.lower()}"
+    return (
+        f"CREATE TRIGGER {trigger_name}\n"
+        f"BEFORE {operation} ON {table}\n"
+        "BEGIN\n"
+        f"    SELECT RAISE(ABORT, 'append-only table: {table}');\n"
+        "END;"
+    )
+
+
+_APPEND_ONLY_TRIGGER_SQL = MappingProxyType(
+    {
+        f"{table}_no_{operation.lower()}": _append_only_trigger_sql(table, operation)
+        for table in _APPEND_ONLY_TABLES
+        for operation in _APPEND_ONLY_OPERATIONS
+    }
+)
+
+
+def _normalized_trigger_sql(sql: str) -> str:
+    """Normalize fixed SQL formatting while preserving quoted RAISE text exactly."""
+    sql = sql.strip()
+    if sql.endswith(";"):
+        sql = sql[:-1]
+    normalized = []
+    in_literal = False
+    index = 0
+    while index < len(sql):
+        character = sql[index]
+        if character == "'":
+            normalized.append(character)
+            if in_literal and index + 1 < len(sql) and sql[index + 1] == "'":
+                normalized.append("'")
+                index += 2
+                continue
+            in_literal = not in_literal
+        elif in_literal:
+            normalized.append(character)
+        elif not character.isspace():
+            normalized.append(character.casefold())
+        index += 1
+    return "".join(normalized)
+
+
+def _canonical_utc_timestamp(value: Any) -> Optional[str]:
+    """Return *value* only when it is canonical repository UTC RFC 3339."""
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return None
+    if parsed.utcoffset() != timezone.utc.utcoffset(None):
+        return None
+    canonical = (
+        parsed.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds" if parsed.microsecond else "seconds")
+        .replace("+00:00", "Z")
+    )
+    return value if value == canonical else None
 
 
 class ExperimentRepository:
@@ -244,36 +311,53 @@ class ExperimentRepository:
             isolation_level=None,
             timeout=busy_timeout_ms / 1000,
         )
-        self._connection.row_factory = sqlite3.Row
         try:
+            self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute("PRAGMA synchronous = FULL")
-            self._connection.execute("PRAGMA busy_timeout = ?", (busy_timeout_ms,))
-        except sqlite3.OperationalError:
-            # PRAGMA assignments do not accept bound values on older SQLite releases.
-            self._connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms:d}")
-        if self._database != ":memory:":
-            self._connection.execute("PRAGMA journal_mode = WAL")
-            self._connection.execute("PRAGMA wal_autocheckpoint = 1000")
-        self._connection.executescript(_SCHEMA_SQL)
-        for table in _APPEND_ONLY_TABLES:
-            self._create_append_only_triggers(table)
+            try:
+                self._connection.execute("PRAGMA busy_timeout = ?", (busy_timeout_ms,))
+            except sqlite3.OperationalError:
+                # PRAGMA assignments do not accept bound values on older SQLite.
+                self._connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms:d}")
+            if self._database != ":memory:":
+                self._connection.execute("PRAGMA journal_mode = WAL")
+                self._connection.execute("PRAGMA wal_autocheckpoint = 1000")
 
-    def _create_append_only_triggers(self, table: str) -> None:
-        self._connection.executescript(
-            f"""
-            CREATE TRIGGER IF NOT EXISTS {table}_no_update
-            BEFORE UPDATE ON {table}
-            BEGIN
-                SELECT RAISE(ABORT, 'append-only table: {table}');
-            END;
-            CREATE TRIGGER IF NOT EXISTS {table}_no_delete
-            BEFORE DELETE ON {table}
-            BEGIN
-                SELECT RAISE(ABORT, 'append-only table: {table}');
-            END;
-            """
-        )
+            existing_tables = {
+                row["name"]
+                for row in self._connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+                if row["name"] in _APPEND_ONLY_TABLES
+            }
+            if existing_tables:
+                self._verify_append_only_triggers()
+            else:
+                self._connection.executescript(_SCHEMA_SQL)
+                for sql in _APPEND_ONLY_TRIGGER_SQL.values():
+                    self._connection.execute(sql)
+        except Exception:
+            self._connection.close()
+            self._closed = True
+            raise
+
+    def _verify_append_only_triggers(self) -> None:
+        stored = {
+            row["name"]: row["sql"]
+            for row in self._connection.execute(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'trigger'"
+            )
+            if row["name"] in _APPEND_ONLY_TRIGGER_SQL
+        }
+        for name, expected_sql in _APPEND_ONLY_TRIGGER_SQL.items():
+            actual_sql = stored.get(name)
+            if actual_sql is None:
+                raise IntegrityError(f"missing append-only trigger: {name}")
+            if _normalized_trigger_sql(actual_sql) != _normalized_trigger_sql(
+                expected_sql
+            ):
+                raise IntegrityError(f"invalid append-only trigger definition: {name}")
 
     def __enter__(self) -> "ExperimentRepository":
         self._ensure_open()
@@ -327,20 +411,7 @@ class ExperimentRepository:
             timespec = "microseconds" if value.microsecond else "seconds"
             return value.isoformat(timespec=timespec).replace("+00:00", "Z")
         if isinstance(value, str):
-            try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                raise ValueError("repository clock must return canonical UTC RFC 3339")
-            if not value.endswith("Z") or parsed.utcoffset() != timezone.utc.utcoffset(
-                None
-            ):
-                raise ValueError("repository clock must return canonical UTC RFC 3339")
-            canonical = (
-                parsed.astimezone(timezone.utc)
-                .isoformat(timespec="microseconds" if parsed.microsecond else "seconds")
-                .replace("+00:00", "Z")
-            )
-            if canonical != value:
+            if _canonical_utc_timestamp(value) is None:
                 raise ValueError("repository clock must return canonical UTC RFC 3339")
             return value
         raise ValueError(
@@ -681,6 +752,10 @@ class ExperimentRepository:
         )
 
     def _decode_evidence(self, row: sqlite3.Row) -> RecordMixin:
+        if _canonical_utc_timestamp(row["inserted_timestamp"]) is None:
+            raise IntegrityError(
+                f"invalid insertion timestamp at evidence sequence {row['sequence']}"
+            )
         actual_hash = self._hash(row["payload_json"])
         if actual_hash != row["payload_hash"]:
             raise IntegrityError(
@@ -776,12 +851,13 @@ class ExperimentRepository:
             )
 
     def verify_integrity(self) -> IntegrityReport:
-        """Validate all hashes, v2 payloads, indexes, projections, and references.
+        """Validate guards, hashes, timestamps, v2 payloads, projections, and references.
 
         Returns a report only on success; the first detected defect raises
         :class:`IntegrityError` with the affected evidence/table identity.
         """
         self._ensure_open()
+        self._verify_append_only_triggers()
         evidence_rows = self._connection.execute(
             "SELECT * FROM evidence_log ORDER BY sequence"
         ).fetchall()
