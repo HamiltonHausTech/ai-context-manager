@@ -13,5 +13,5 @@ gunicorn==23.0.0
 
 # Security: Ensure secure versions
 urllib3>=2.4.0,!=2.3.0
-requests>=2.31.0
+requests>=2.34.2
 cryptography>=49.0.0
