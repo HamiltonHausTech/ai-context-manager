@@ -43,6 +43,23 @@ def test_retrieval_result_explains_budget_exclusion():
     assert result.decisions[0].tokens > 3
 
 
+def test_retrieval_pipeline_accepts_authoritative_component_token_counter():
+    from ai_context_manager.retrieval import RetrievalPipeline
+
+    component = TaskSummaryComponent("authoritative", "Large", "word " * 100)
+    request = RetrievalRequest(token_budget=1)
+    pipeline = RetrievalPipeline(
+        lambda _component: 1.0,
+        token_counter=lambda _component, _content: 1,
+    )
+
+    result = pipeline.retrieve([component], request)
+
+    assert result.used_tokens == 1
+    assert result.items[0].tokens == 1
+    assert result.decisions[0].tokens == 1
+
+
 def test_retrieval_result_reports_processing_errors():
     class BrokenComponent(ContextComponent):
         def load_content(self):

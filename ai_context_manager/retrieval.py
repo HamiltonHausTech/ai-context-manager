@@ -115,10 +115,23 @@ class RetrievalPipeline:
         score_component: Callable[[ContextComponent], float],
         summarizer: Optional[Summarizer] = None,
         relevance_component: Optional[Callable[[str, ContextComponent], float]] = None,
+        token_counter: Optional[Callable[[ContextComponent, str], int]] = None,
     ):
         self.score_component = score_component
         self.summarizer = summarizer
         self.relevance_component = relevance_component
+        self.token_counter = token_counter
+
+    def _count_tokens(self, component: ContextComponent, content: str) -> int:
+        """Count tokens, allowing callers with authoritative accounting to opt in."""
+        count = (
+            self.token_counter(component, content)
+            if self.token_counter is not None
+            else estimate_tokens(content)
+        )
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise ValueError("token counter must return a nonnegative integer")
+        return count
 
     _STOP_WORDS = {
         "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
@@ -250,7 +263,7 @@ class RetrievalPipeline:
             factors = ranked_item[2] if len(ranked_item) > 2 else {}
             try:
                 content = component.get_content()
-                token_count = estimate_tokens(content)
+                token_count = self._count_tokens(component, content)
                 summarized = False
                 if request.required_terms:
                     content_terms = self._terms(content)
@@ -336,7 +349,7 @@ class RetrievalPipeline:
                     )
                     content = self.summarizer.summarize(compression_input, remaining)
                     content = truncate_to_token_budget(content, remaining)
-                    token_count = estimate_tokens(content)
+                    token_count = self._count_tokens(component, content)
                     summarized = True
                     if not content or token_count > remaining:
                         result.decisions.append(

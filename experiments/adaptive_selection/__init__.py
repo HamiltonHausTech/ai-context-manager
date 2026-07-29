@@ -27,6 +27,14 @@ from .repository import (
     RepositoryDatabaseError,
     RepositoryError,
 )
+from .selectors import (
+    AdaptivePolicySelector,
+    FullContextSelector,
+    SelectionResult,
+    SelectorDecision,
+    SimilarityTopKSelector,
+    StaticPolicySelector,
+)
 from .schema import (
     FEEDBACK_SIGNAL_TYPES,
     FEEDBACK_SOURCES,
@@ -71,6 +79,12 @@ __all__ = [
     "ReferenceIntegrityError",
     "RecordNotFoundError",
     "IntegrityError",
+    "AdaptivePolicySelector",
+    "FullContextSelector",
+    "SelectionResult",
+    "SelectorDecision",
+    "SimilarityTopKSelector",
+    "StaticPolicySelector",
     "SCHEMA_VERSION",
     "FEEDBACK_SIGNAL_TYPES",
     "FEEDBACK_SOURCES",
