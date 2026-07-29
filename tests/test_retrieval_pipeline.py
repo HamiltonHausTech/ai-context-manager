@@ -91,6 +91,61 @@ def test_injected_token_counter_receives_summary_and_drives_replacement_count():
     assert result.decisions[0].tokens == 2
 
 
+def test_custom_counter_preserves_complete_long_summary_when_it_fits():
+    from ai_context_manager.retrieval import RetrievalPipeline
+
+    summary = "complete replacement summary " * 100
+
+    class FixedSummarizer:
+        def summarize(self, text, max_tokens):
+            return summary
+
+    component = TaskSummaryComponent("summarized", "Large", "word " * 100)
+    calls = []
+
+    def counter(_component, content):
+        calls.append(content)
+        return 100 if content == component.get_content() else 2
+
+    result = RetrievalPipeline(
+        lambda _component: 1.0,
+        summarizer=FixedSummarizer(),
+        token_counter=counter,
+    ).retrieve([component], RetrievalRequest(token_budget=3, summarize_if_needed=True))
+
+    assert calls == [component.get_content(), summary]
+    assert result.items[0].content == summary
+    assert result.items[0].tokens == result.used_tokens == 2
+
+
+def test_custom_counter_rejects_complete_summary_that_exceeds_budget():
+    from ai_context_manager.retrieval import RetrievalPipeline
+
+    summary = "complete replacement summary " * 100
+
+    class FixedSummarizer:
+        def summarize(self, text, max_tokens):
+            return summary
+
+    component = TaskSummaryComponent("summarized", "Large", "word " * 100)
+    calls = []
+
+    def counter(_component, content):
+        calls.append(content)
+        return 100 if content == component.get_content() else 4
+
+    result = RetrievalPipeline(
+        lambda _component: 1.0,
+        summarizer=FixedSummarizer(),
+        token_counter=counter,
+    ).retrieve([component], RetrievalRequest(token_budget=3, summarize_if_needed=True))
+
+    assert calls == [component.get_content(), summary]
+    assert result.items == []
+    assert result.decisions[0].reason == "summarization_failed_budget"
+    assert result.decisions[0].tokens == 4
+
+
 def test_retrieval_result_reports_processing_errors():
     class BrokenComponent(ContextComponent):
         def load_content(self):

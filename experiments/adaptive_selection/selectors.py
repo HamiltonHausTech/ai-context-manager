@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import math
 import re
+import threading
 from types import MappingProxyType
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
@@ -25,6 +26,22 @@ from .schema import ContextItem, TaskInputs
 
 ScoreValue = Union[bool, int, float, str]
 UtilityProvider = Union[Mapping[str, float], Callable[[str], float]]
+
+
+class SelectorProcessingError(ValueError):
+    """An expected, candidate-local selector processing failure."""
+
+
+class UnsafeFeatureError(SelectorProcessingError):
+    """A selector-visible feature failed the reusable-feature safety policy."""
+
+
+class UtilityProviderError(SelectorProcessingError):
+    """A reusable-feature utility provider failed without exposing its details."""
+
+
+class PolicyScoreError(SelectorProcessingError):
+    """A candidate policy score could not be represented as a finite float."""
 
 
 def _finite(name: str, value: Any, *, nonnegative: bool = False) -> float:
@@ -112,19 +129,23 @@ def _validate_feature_name(
     """
 
     if not isinstance(feature, str):
-        raise ValueError("{} must be a safe namespaced feature".format(name))
+        raise UnsafeFeatureError("{} must be a safe namespaced feature".format(name))
     normalized = feature.casefold()
     screening_text = re.sub(r"[^a-z0-9]+", "", normalized)
     if any(term in screening_text for term in _RESERVED_FEATURE_TERMS):
-        raise ValueError("{} contains reserved evaluation vocabulary".format(name))
+        raise UnsafeFeatureError(
+            "{} contains reserved evaluation vocabulary".format(name)
+        )
     if any(term in screening_text for term in _FORBIDDEN_IDENTITY_TERMS) or re.search(
         r"(?:^|[^a-z0-9])i[^a-z0-9]*d(?:$|[^a-z0-9])", normalized
     ):
-        raise ValueError("{} contains forbidden identity vocabulary".format(name))
+        raise UnsafeFeatureError(
+            "{} contains forbidden identity vocabulary".format(name)
+        )
     if not _FEATURE_RE.fullmatch(feature):
-        raise ValueError("{} must be a safe namespaced feature".format(name))
+        raise UnsafeFeatureError("{} must be a safe namespaced feature".format(name))
     if normalized.split(":", 1)[0] not in _APPROVED_FEATURE_NAMESPACES:
-        raise ValueError(
+        raise UnsafeFeatureError(
             "{} uses an unapproved reusable-feature namespace".format(name)
         )
     collapsed_candidate_ids = (
@@ -135,7 +156,7 @@ def _validate_feature_name(
         candidate_id and candidate_id in screening_text
         for candidate_id in collapsed_candidate_ids
     ):
-        raise ValueError("{} contains a candidate ID".format(name))
+        raise UnsafeFeatureError("{} contains a candidate ID".format(name))
     return feature
 
 
@@ -163,13 +184,17 @@ def _visible_features(
         value = item.metadata[field]
         values = value if isinstance(value, tuple) else (value,)
         if not values or any(not isinstance(member, str) for member in values):
-            raise ValueError("metadata.{} must contain feature strings".format(field))
+            raise UnsafeFeatureError(
+                "metadata.{} must contain feature strings".format(field)
+            )
         for member in values:
             validated = _validate_feature_name(
                 member, "metadata.{} feature".format(field), candidate_ids
             )
             if field == "format" and not validated.startswith("format:"):
-                raise ValueError("metadata.format must use the format namespace")
+                raise UnsafeFeatureError(
+                    "metadata.format must use the format namespace"
+                )
             features.append(validated)
     return tuple(sorted(set(features)))
 
@@ -246,6 +271,27 @@ class SelectionResult:
 
 class _BaseSelector:
     mode = "base"
+    _READ_ONLY_POLICY_FIELDS = frozenset(
+        {
+            "feature_weights",
+            "importance_weight",
+            "k",
+            "learning_weight",
+            "relevance_weight",
+        }
+    )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "mode" or (
+            name in self._READ_ONLY_POLICY_FIELDS and name in self.__dict__
+        ):
+            raise AttributeError("{} is read-only".format(name))
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "mode" or name in self._READ_ONLY_POLICY_FIELDS:
+            raise AttributeError("{} is read-only".format(name))
+        object.__delattr__(self, name)
 
     @staticmethod
     def _require_inputs(inputs: TaskInputs) -> None:
@@ -429,8 +475,8 @@ class StaticPolicySelector(_BaseSelector):
                 contributions.append(weight)
         try:
             raw_score = _finite("raw policy score", math.fsum(contributions))
-        except OverflowError as exc:
-            raise ValueError("raw policy score must be finite") from exc
+        except (OverflowError, ValueError) as exc:
+            raise PolicyScoreError("raw policy score must be finite") from exc
         factors["policy.static.raw_score"] = raw_score
         factors["policy.raw_score"] = raw_score
         return raw_score, factors
@@ -451,7 +497,7 @@ class StaticPolicySelector(_BaseSelector):
                     raise TypeError("unexpected component type")
                 _visible_features(component.item, candidate_ids)
                 validated.append(component)
-            except Exception:
+            except UnsafeFeatureError:
                 initial.append(
                     RetrievalDecision(
                         component.id,
@@ -470,7 +516,7 @@ class StaticPolicySelector(_BaseSelector):
                     component.item, candidate_ids
                 )
                 rankable.append(component)
-            except Exception:
+            except SelectorProcessingError:
                 initial.append(
                     RetrievalDecision(
                         component.id,
@@ -595,24 +641,51 @@ class AdaptivePolicySelector(StaticPolicySelector):
         else:
             raise ValueError("utility_estimates must be a mapping or callback")
         self._utility_cache: Dict[str, Tuple[bool, float]] = {}
+        self._utility_in_progress: Dict[str, int] = {}
+        self._utility_condition = threading.Condition(threading.RLock())
 
     def _utility(self, feature: str) -> float:
         if self._utility_estimates is None:
             return 0.0
         if isinstance(self._utility_estimates, Mapping):
             return self._utility_estimates.get(feature, 0.0)
-        cached = self._utility_cache.get(feature)
-        if cached is None:
-            try:
-                value = _finite(
-                    "utility callback result", self._utility_estimates(feature)
-                )
-                cached = (True, value)
-            except Exception:
-                cached = (False, 0.0)
-            self._utility_cache[feature] = cached
+
+        owner = threading.get_ident()
+        with self._utility_condition:
+            while feature not in self._utility_cache:
+                in_progress_owner = self._utility_in_progress.get(feature)
+                if in_progress_owner is None:
+                    self._utility_in_progress[feature] = owner
+                    break
+                if in_progress_owner == owner:
+                    self._utility_cache[feature] = (False, 0.0)
+                    del self._utility_in_progress[feature]
+                    self._utility_condition.notify_all()
+                    raise UtilityProviderError(
+                        "utility callback failed for reusable feature"
+                    )
+                self._utility_condition.wait()
+            else:
+                cached = self._utility_cache[feature]
+                if not cached[0]:
+                    raise UtilityProviderError(
+                        "utility callback failed for reusable feature"
+                    )
+                return cached[1]
+
+        try:
+            value = _finite("utility callback result", self._utility_estimates(feature))
+            completed = (True, value)
+        except Exception:
+            completed = (False, 0.0)
+
+        with self._utility_condition:
+            cached = self._utility_cache.setdefault(feature, completed)
+            if self._utility_in_progress.get(feature) == owner:
+                del self._utility_in_progress[feature]
+            self._utility_condition.notify_all()
         if not cached[0]:
-            raise ValueError("utility callback failed for reusable feature")
+            raise UtilityProviderError("utility callback failed for reusable feature")
         return cached[1]
 
     def _score_details(
@@ -627,17 +700,22 @@ class AdaptivePolicySelector(StaticPolicySelector):
                 utility_contributions.append(estimate)
         try:
             utility = _finite("adaptive raw utility", math.fsum(utility_contributions))
-        except OverflowError as exc:
-            raise ValueError("adaptive raw utility must be finite") from exc
-        contribution = _finite(
-            "weighted utility contribution", self.learning_weight * utility
-        )
+        except (OverflowError, ValueError) as exc:
+            raise PolicyScoreError("adaptive raw utility must be finite") from exc
+        try:
+            contribution = _finite(
+                "weighted utility contribution", self.learning_weight * utility
+            )
+        except ValueError as exc:
+            raise PolicyScoreError(
+                "weighted utility contribution must be finite"
+            ) from exc
         try:
             raw_score = _finite(
                 "raw policy score", math.fsum((static_raw_score, contribution))
             )
-        except OverflowError as exc:
-            raise ValueError("raw policy score must be finite") from exc
+        except (OverflowError, ValueError) as exc:
+            raise PolicyScoreError("raw policy score must be finite") from exc
         factors["policy.adaptive.raw_utility"] = utility
         factors["policy.adaptive.learning_weight"] = self.learning_weight
         factors["policy.adaptive.weighted_utility_contribution"] = contribution

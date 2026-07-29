@@ -1,8 +1,11 @@
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import fields, is_dataclass, replace
 import inspect
 import math
 import sys
-from dataclasses import replace
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -263,12 +266,34 @@ def test_traces_contain_no_sealed_names_or_gold_values():
         "irrelevant_context_item_ids",
         "feedback",
     )
-    sealed_values = set(case.sealed_evaluation.required_context_item_ids)
+    sealed = case.sealed_evaluation
+    protected_values = {
+        sealed.gold_answer,
+        sealed.scoring_rubric.rubric_id,
+        sealed.scoring_rubric.instructions,
+        *(criterion.criterion_id for criterion in sealed.scoring_rubric.criteria),
+        *(criterion.description for criterion in sealed.scoring_rubric.criteria),
+    }
+
+    def nested_values(value):
+        if is_dataclass(value) and not isinstance(value, type):
+            for field in fields(value):
+                yield from nested_values(getattr(value, field.name))
+        elif isinstance(value, Mapping):
+            for key, member in value.items():
+                yield from nested_values(key)
+                yield from nested_values(member)
+        elif isinstance(value, (tuple, list)):
+            for member in value:
+                yield from nested_values(member)
+        else:
+            yield value
+
     for selector in _selectors():
         result = selector.select(case.inputs)
         rendered = repr(result).casefold()
         assert not any(name in rendered for name in forbidden_names)
-        assert not sealed_values.intersection(result.__dict__)
+        assert protected_values.isdisjoint(nested_values(result))
 
 
 def test_invalid_policy_configuration_and_nonfinite_utilities_are_rejected():
@@ -479,12 +504,15 @@ def test_unsafe_approved_metadata_values_are_explicitly_rejected(field, unsafe_k
         unsafe = unsafe.replace("signal:", "format:")
     value = unsafe if field == "format" else (unsafe,)
     poisoned = replace(item, metadata=dict(item.metadata, **{field: value}))
+    constrained = replace(inputs, candidate_context=(poisoned,))
     seen = []
     result = AdaptivePolicySelector(
         utility_estimates=lambda feature: seen.append(feature) or 0.0
-    ).select(replace(inputs, candidate_context=(poisoned,)))
+    ).select(constrained)
 
+    _assert_complete_exact_result(result, constrained)
     assert result.decisions[0].reason == "processing_error"
+    assert result.decisions[0].detail == "processing_error"
     assert unsafe not in seen
     assert unsafe not in repr(result.decisions[0].score_factors)
 
@@ -689,6 +717,125 @@ def test_callback_failure_is_cached_once_and_repeats_deterministically(nonfinite
     assert calls.count("signal:failing") == 1
     assert first.decisions[0].reason == "processing_error"
     assert "backend detail" not in repr(first)
+
+
+def test_concurrent_selects_populate_each_callback_feature_once_and_share_result():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    item = replace(
+        inputs.candidate_context[0],
+        metadata={"learning_attributes": ("signal:shared",)},
+    )
+    constrained = replace(inputs, candidate_context=(item,))
+    worker_count = 8
+    ready = threading.Barrier(worker_count)
+    all_released = threading.Event()
+    callback_entered = threading.Event()
+    release_callback = threading.Event()
+    released_count = 0
+    released_lock = threading.Lock()
+    calls = []
+    calls_lock = threading.Lock()
+
+    def callback(feature):
+        with calls_lock:
+            calls.append(feature)
+        callback_entered.set()
+        assert release_callback.wait(timeout=5)
+        return 2.0
+
+    selector = AdaptivePolicySelector(utility_estimates=callback)
+    original_score_details = selector._score_details
+
+    def synchronized_score_details(*args, **kwargs):
+        nonlocal released_count
+        ready.wait(timeout=5)
+        with released_lock:
+            released_count += 1
+            if released_count == worker_count:
+                all_released.set()
+        return original_score_details(*args, **kwargs)
+
+    selector._score_details = synchronized_score_details
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = [
+            executor.submit(selector.select, constrained) for _ in range(worker_count)
+        ]
+        assert all_released.wait(timeout=5)
+        assert callback_entered.wait(timeout=5)
+        release_callback.set()
+        results = [future.result(timeout=5) for future in futures]
+
+    assert all(result == results[0] for result in results)
+    assert sorted(calls) == ["confidence:high", "signal:shared"]
+
+
+def test_same_thread_reentrant_callback_fails_without_deadlock_or_second_invocation():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    constrained = replace(inputs, candidate_context=(inputs.candidate_context[0],))
+    calls = []
+    selector = None
+
+    def callback(feature):
+        calls.append(feature)
+        assert selector is not None
+        selector.select(constrained)
+        return 1.0
+
+    selector = AdaptivePolicySelector(utility_estimates=callback)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(selector.select, constrained).result(timeout=5)
+
+    assert calls == ["confidence:high"]
+    assert result.decisions[0].reason == "processing_error"
+
+
+@pytest.mark.parametrize(
+    "selector,field_name,new_value",
+    [
+        (SimilarityTopKSelector(k=2), "k", 3),
+        (StaticPolicySelector(), "feature_weights", {}),
+        (StaticPolicySelector(), "relevance_weight", 0.1),
+        (StaticPolicySelector(), "importance_weight", 0.9),
+        (AdaptivePolicySelector(), "feature_weights", {}),
+        (AdaptivePolicySelector(), "relevance_weight", 0.1),
+        (AdaptivePolicySelector(), "importance_weight", 0.9),
+        (AdaptivePolicySelector(), "learning_weight", 0.5),
+    ],
+)
+def test_public_policy_configuration_rejects_reassignment_and_stays_reproducible(
+    selector, field_name, new_value
+):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    first = selector.select(inputs)
+
+    with pytest.raises(AttributeError, match="read-only"):
+        setattr(selector, field_name, new_value)
+
+    assert selector.select(inputs) == first
+
+
+@pytest.mark.parametrize("selector", _selectors())
+def test_selector_mode_is_read_only(selector):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    first = selector.select(inputs)
+
+    with pytest.raises(AttributeError, match="read-only"):
+        selector.mode = "changed"
+
+    assert selector.select(inputs) == first
+
+
+def test_unexpected_internal_ranking_error_propagates(monkeypatch):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    selector = StaticPolicySelector()
+
+    def broken_score_details(*_args, **_kwargs):
+        raise RuntimeError("internal selector defect")
+
+    monkeypatch.setattr(selector, "_score_details", broken_score_details)
+
+    with pytest.raises(RuntimeError, match="internal selector defect"):
+        selector.select(inputs)
 
 
 def test_raw_scores_are_pool_normalized_and_trace_pipeline_math():
