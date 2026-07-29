@@ -285,6 +285,9 @@ class LearningSnapshot:
     feature_utilities: Mapping[str, Mapping[str, float]]
     id_local_utilities: Mapping[str, Mapping[str, float]]
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("LearningSnapshot cannot be subclassed")
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         raise TypeError(
             "LearningSnapshot instances are created only by learn_utilities"

@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, dataclass, replace
 import ast
 import inspect
 import json
@@ -546,6 +546,43 @@ def test_learning_snapshot_rejects_all_public_construction():
                 feature_utilities={"family": {"basis:observed": 0.5}},
             )
         )
+
+
+def test_learning_snapshot_rejects_subclasses_before_they_can_forge_instances():
+    created_types = []
+
+    def define_plain_subclass():
+        class PlainSnapshot(LearningSnapshot):
+            pass
+
+        created_types.append(PlainSnapshot)
+
+    def define_dataclass_subclass():
+        @dataclass(frozen=True)
+        class DataclassSnapshot(LearningSnapshot):
+            pass
+
+        created_types.append(DataclassSnapshot)
+
+    def define_custom_init_subclass():
+        class CustomInitSnapshot(LearningSnapshot):
+            def __init__(self):
+                pass
+
+        created_types.append(CustomInitSnapshot)
+
+    for define_subclass in (
+        define_plain_subclass,
+        define_dataclass_subclass,
+        define_custom_init_subclass,
+    ):
+        with pytest.raises(TypeError, match="cannot be subclassed"):
+            define_subclass()
+
+    assert created_types == []
+    snapshot = _learn()
+    assert type(snapshot) is LearningSnapshot
+    assert isinstance(snapshot, LearningSnapshot)
 
 
 def test_learner_uses_one_clock_and_formula_correct_confidence():
