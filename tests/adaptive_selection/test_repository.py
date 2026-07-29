@@ -1,6 +1,7 @@
 import hashlib
 import json
 import sqlite3
+import threading
 from dataclasses import replace
 from datetime import datetime, timezone
 
@@ -8,11 +9,14 @@ import pytest
 
 from experiments.adaptive_selection.repository import (
     _APPEND_ONLY_TABLES,
+    _APPEND_ONLY_TRIGGER_SQL,
+    _TABLE_DEFINITIONS,
     _append_only_trigger_sql,
     DuplicateRecordError,
     ExperimentRepository,
     IntegrityError,
     ReferenceIntegrityError,
+    RepositoryDatabaseError,
 )
 from experiments.adaptive_selection.schema import (
     CriterionScore,
@@ -617,6 +621,226 @@ def test_tampered_insertion_timestamp_is_rejected_on_decode_and_integrity(
             repo.load_run("run-1")
         with pytest.raises(IntegrityError, match="invalid insertion timestamp"):
             repo.verify_integrity()
+
+
+def _create_malformed_storage(path, table, old, new):
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        for name, sql in _TABLE_DEFINITIONS.items():
+            if name == table:
+                assert old in sql
+                sql = sql.replace(old, new)
+            connection.execute(sql)
+        for sql in _APPEND_ONLY_TRIGGER_SQL.values():
+            connection.execute(sql)
+        connection.execute("PRAGMA user_version = 1")
+
+
+@pytest.mark.parametrize(
+    "table,old,new",
+    [
+        (
+            "evidence_log",
+            "    inserted_timestamp TEXT NOT NULL,\n",
+            "",
+        ),
+        ("selection_decisions", "task_case_id TEXT", "task_case_id INTEGER"),
+        (
+            "model_outputs",
+            "model_input_tokens INTEGER NOT NULL",
+            "model_input_tokens INTEGER",
+        ),
+        (
+            "experiment_results",
+            "REFERENCES experiment_runs(run_id)",
+            "REFERENCES evidence_log(record_id)",
+        ),
+        (
+            "utility_estimates",
+            "evidence_sequence INTEGER NOT NULL UNIQUE",
+            "evidence_sequence INTEGER NOT NULL",
+        ),
+    ],
+    ids=[
+        "missing-column",
+        "altered-type",
+        "altered-constraint",
+        "altered-fk",
+        "altered-unique",
+    ],
+)
+def test_open_rejects_malformed_physical_table_definition(tmp_path, table, old, new):
+    path = tmp_path / "malformed.sqlite3"
+    _create_malformed_storage(path, table, old, new)
+
+    with pytest.raises(IntegrityError, match="physical schema.*table"):
+        repository(path)
+
+
+@pytest.mark.parametrize("tamper", ["wrong-version", "missing-table", "extra-table"])
+def test_open_rejects_wrong_version_or_table_set(tmp_path, tamper):
+    path = tmp_path / "wrong-storage-format.sqlite3"
+    with repository(path):
+        pass
+    with sqlite3.connect(path) as connection:
+        if tamper == "wrong-version":
+            connection.execute("PRAGMA user_version = 0")
+        elif tamper == "missing-table":
+            connection.execute("DROP TABLE utility_estimates")
+        else:
+            connection.execute("CREATE TABLE unexpected_repository_table (value TEXT)")
+
+    with pytest.raises(IntegrityError, match="physical schema"):
+        repository(path)
+
+
+@pytest.mark.parametrize("tamper", ["altered-table", "missing-table", "extra-table"])
+def test_in_session_integrity_scan_revalidates_physical_schema(tmp_path, tamper):
+    path = tmp_path / "post-open-schema.sqlite3"
+    repo = repository(path)
+    try:
+        with sqlite3.connect(path) as connection:
+            if tamper == "altered-table":
+                connection.execute(
+                    "ALTER TABLE feedback_events ADD COLUMN unexpected TEXT"
+                )
+            elif tamper == "missing-table":
+                connection.execute("DROP TABLE utility_estimates")
+            else:
+                connection.execute(
+                    "CREATE TABLE unexpected_repository_table (value TEXT)"
+                )
+
+        with pytest.raises(IntegrityError, match="physical schema"):
+            repo.verify_integrity()
+        assert not repo._connection.in_transaction
+    finally:
+        repo.close()
+
+
+def test_integrity_scan_uses_one_wal_snapshot_during_concurrent_append(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "snapshot.sqlite3"
+    reader = repository(path)
+    reader.append_run(records()[0])
+    snapshot_established = threading.Event()
+    writer_finished = threading.Event()
+    real_read = ExperimentRepository._read_integrity_evidence
+
+    def pause_after_evidence_read(self):
+        rows = real_read(self)
+        snapshot_established.set()
+        assert writer_finished.wait(timeout=5)
+        return rows
+
+    monkeypatch.setattr(
+        ExperimentRepository, "_read_integrity_evidence", pause_after_evidence_read
+    )
+
+    def append_from_writer():
+        assert snapshot_established.wait(timeout=5)
+        with repository(path) as writer:
+            writer.append_feedback(records()[3])
+        writer_finished.set()
+
+    thread = threading.Thread(target=append_from_writer)
+    thread.start()
+    try:
+        report = reader.verify_integrity()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert report.evidence_rows == 1
+        assert dict(report.per_type_counts) == {"run_manifest": 1}
+        assert len(reader.list_evidence()) == 2
+        assert not reader._connection.in_transaction
+    finally:
+        reader.close()
+
+
+def test_integrity_scan_failure_cleans_up_read_transaction(tmp_path):
+    path = tmp_path / "failed-scan.sqlite3"
+    repo = repository(path)
+    try:
+        with sqlite3.connect(path) as connection:
+            connection.execute("PRAGMA user_version = 99")
+        with pytest.raises(IntegrityError, match="physical schema version"):
+            repo.verify_integrity()
+        assert not repo._connection.in_transaction
+    finally:
+        repo.close()
+
+
+def test_commit_failure_rolls_back_and_uses_database_error_boundary(monkeypatch):
+    real_connect = sqlite3.connect
+    connections = []
+
+    class FailingCommitConnection(sqlite3.Connection):
+        fail_commit = False
+
+        def commit(self):
+            if self.fail_commit:
+                raise sqlite3.OperationalError("injected commit failure")
+            return super().commit()
+
+    def connect(*args, **kwargs):
+        kwargs["factory"] = FailingCommitConnection
+        connection = real_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.repository.sqlite3.connect", connect
+    )
+    with repository() as repo:
+        connections[0].fail_commit = True
+        with pytest.raises(RepositoryDatabaseError, match="commit failure"):
+            repo.append_run(records()[0])
+        connections[0].fail_commit = False
+        assert not connections[0].in_transaction
+        assert repo.list_evidence() == []
+
+
+def test_public_read_translates_unexpected_sqlite_error():
+    repo = repository()
+    repo._connection.close()
+    try:
+        with pytest.raises(
+            RepositoryDatabaseError, match="repository database operation"
+        ):
+            repo.list_runs()
+    finally:
+        repo.close()
+
+
+def test_concurrent_first_open_is_serialized_and_bounded(tmp_path):
+    path = tmp_path / "concurrent-first-open.sqlite3"
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def initialize():
+        barrier.wait(timeout=5)
+        try:
+            with repository(path) as repo:
+                outcomes.append(("ok", repo.verify_integrity().evidence_rows))
+        except Exception as error:  # asserted to be the bounded public error below
+            outcomes.append(("error", error))
+
+    threads = [threading.Thread(target=initialize) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(outcomes) == 2
+    assert any(kind == "ok" for kind, _ in outcomes)
+    assert all(
+        kind == "ok" or isinstance(value, RepositoryDatabaseError)
+        for kind, value in outcomes
+    )
+    with repository(path) as repo:
+        assert repo.verify_integrity().ok
 
 
 def test_context_manager_closes_connection_cleanly():

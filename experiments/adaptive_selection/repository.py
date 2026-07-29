@@ -41,6 +41,10 @@ class RepositoryError(Exception):
     """Base error for repository operations."""
 
 
+class RepositoryDatabaseError(RepositoryError):
+    """Raised when SQLite fails outside a defined repository integrity condition."""
+
+
 class DuplicateRecordError(RepositoryError, ValueError):
     """Raised when an immutable record identity already exists."""
 
@@ -135,8 +139,10 @@ _SPECS: Tuple[_RecordSpec, ...] = (
 _SPEC_BY_TYPE = {spec.record_type: spec for spec in _SPECS}
 _SPEC_BY_CLASS = {spec.record_class: spec for spec in _SPECS}
 
-_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS evidence_log (
+_PHYSICAL_SCHEMA_VERSION = 1
+_TABLE_DEFINITIONS = MappingProxyType(
+    {
+        "evidence_log": """CREATE TABLE evidence_log (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     record_type TEXT NOT NULL,
     record_id TEXT NOT NULL,
@@ -145,30 +151,26 @@ CREATE TABLE IF NOT EXISTS evidence_log (
     payload_hash TEXT NOT NULL,
     inserted_timestamp TEXT NOT NULL,
     UNIQUE(record_type, record_id)
-);
-
-CREATE TABLE IF NOT EXISTS experiment_runs (
+)""",
+        "experiment_runs": """CREATE TABLE experiment_runs (
     run_id TEXT PRIMARY KEY,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS selection_decisions (
+)""",
+        "selection_decisions": """CREATE TABLE selection_decisions (
     decision_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES experiment_runs(run_id),
     task_case_id TEXT NOT NULL,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS outcomes (
+)""",
+        "outcomes": """CREATE TABLE outcomes (
     outcome_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES experiment_runs(run_id),
     task_case_id TEXT NOT NULL,
     selection_decision_id TEXT NOT NULL REFERENCES selection_decisions(decision_id),
     execution_status TEXT NOT NULL,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS model_outputs (
+)""",
+        "model_outputs": """CREATE TABLE model_outputs (
     outcome_id TEXT PRIMARY KEY REFERENCES outcomes(outcome_id),
     run_id TEXT NOT NULL REFERENCES experiment_runs(run_id),
     task_case_id TEXT NOT NULL,
@@ -179,40 +181,29 @@ CREATE TABLE IF NOT EXISTS model_outputs (
     model_output_tokens INTEGER NOT NULL,
     execution_latency_ms REAL NOT NULL,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS feedback_events (
+)""",
+        "feedback_events": """CREATE TABLE feedback_events (
     event_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES experiment_runs(run_id),
     task_case_id TEXT NOT NULL,
     task_family_id TEXT NOT NULL,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS utility_estimates (
+)""",
+        "utility_estimates": """CREATE TABLE utility_estimates (
     utility_estimate_id TEXT PRIMARY KEY,
     task_family_id TEXT NOT NULL,
     estimator_version TEXT NOT NULL,
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-
-CREATE TABLE IF NOT EXISTS experiment_results (
+)""",
+        "experiment_results": """CREATE TABLE experiment_results (
     experiment_result_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES experiment_runs(run_id),
     evidence_sequence INTEGER NOT NULL UNIQUE REFERENCES evidence_log(sequence)
-);
-"""
-
-_APPEND_ONLY_TABLES = (
-    "evidence_log",
-    "experiment_runs",
-    "selection_decisions",
-    "outcomes",
-    "model_outputs",
-    "feedback_events",
-    "utility_estimates",
-    "experiment_results",
+)""",
+    }
 )
+
+_APPEND_ONLY_TABLES = tuple(_TABLE_DEFINITIONS)
 _APPEND_ONLY_OPERATIONS = ("UPDATE", "DELETE")
 
 
@@ -239,8 +230,8 @@ _APPEND_ONLY_TRIGGER_SQL = MappingProxyType(
 )
 
 
-def _normalized_trigger_sql(sql: str) -> str:
-    """Normalize fixed SQL formatting while preserving quoted RAISE text exactly."""
+def _normalized_sql(sql: str) -> str:
+    """Normalize fixed SQLite DDL while preserving quoted literal text exactly."""
     sql = sql.strip()
     if sql.endswith(";"):
         sql = sql[:-1]
@@ -285,6 +276,15 @@ def _canonical_utc_timestamp(value: Any) -> Optional[str]:
 class ExperimentRepository:
     """SQLite-backed, append-only repository for experiment evidence.
 
+    Physical storage format v1 is the first candidate format and is identified by
+    SQLite ``PRAGMA user_version = 1``; development databases with version 0 are
+    intentionally not migrated. SHA-256 payload hashes, canonical timestamps, typed
+    projections, and replaceable local triggers detect accidental or inconsistent
+    mutation. They do not protect against coordinated tampering by a hostile database
+    owner, provide authenticated provenance, or provide encryption/redaction. The
+    validated insertion timestamp is repository metadata and is not part of the payload
+    hash. Artifact references remain opaque and are never dereferenced.
+
     Args:
         database: ``:memory:`` or a filesystem path.
         clock: UTC insertion clock. It may return an aware ``datetime`` or a canonical
@@ -306,41 +306,81 @@ class ExperimentRepository:
         )
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._closed = False
-        self._connection = sqlite3.connect(
-            self._database,
-            isolation_level=None,
-            timeout=busy_timeout_ms / 1000,
-        )
+        try:
+            self._connection = sqlite3.connect(
+                self._database,
+                isolation_level=None,
+                timeout=busy_timeout_ms / 1000,
+            )
+        except sqlite3.Error as error:
+            self._closed = True
+            raise RepositoryDatabaseError(
+                f"repository database initialization failed: {error}"
+            ) from error
         try:
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute("PRAGMA synchronous = FULL")
-            try:
-                self._connection.execute("PRAGMA busy_timeout = ?", (busy_timeout_ms,))
-            except sqlite3.OperationalError:
-                # PRAGMA assignments do not accept bound values on older SQLite.
-                self._connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms:d}")
+            self._connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms:d}")
             if self._database != ":memory:":
                 self._connection.execute("PRAGMA journal_mode = WAL")
                 self._connection.execute("PRAGMA wal_autocheckpoint = 1000")
-
-            existing_tables = {
-                row["name"]
-                for row in self._connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-                if row["name"] in _APPEND_ONLY_TABLES
-            }
-            if existing_tables:
-                self._verify_append_only_triggers()
-            else:
-                self._connection.executescript(_SCHEMA_SQL)
-                for sql in _APPEND_ONLY_TRIGGER_SQL.values():
-                    self._connection.execute(sql)
-        except Exception:
+            self._initialize_storage()
+        except Exception as error:
             self._connection.close()
             self._closed = True
+            if isinstance(error, sqlite3.Error):
+                raise RepositoryDatabaseError(
+                    f"repository database initialization failed: {error}"
+                ) from error
             raise
+
+    def _initialize_storage(self) -> None:
+        """Serialize first creation and validate the authoritative format before use."""
+        with self._transaction("IMMEDIATE", "repository database initialization"):
+            tables = self._stored_table_definitions()
+            user_version = self._connection.execute("PRAGMA user_version").fetchone()[0]
+            if not tables and user_version == 0:
+                for sql in _TABLE_DEFINITIONS.values():
+                    self._connection.execute(sql)
+                for sql in _APPEND_ONLY_TRIGGER_SQL.values():
+                    self._connection.execute(sql)
+                self._connection.execute(
+                    f"PRAGMA user_version = {_PHYSICAL_SCHEMA_VERSION}"
+                )
+            self._verify_physical_schema()
+            self._verify_append_only_triggers()
+
+    def _stored_table_definitions(self) -> Dict[str, str]:
+        return {
+            row["name"]: row["sql"]
+            for row in self._connection.execute(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+            )
+        }
+
+    def _verify_physical_schema(self) -> None:
+        user_version = self._connection.execute("PRAGMA user_version").fetchone()[0]
+        if user_version != _PHYSICAL_SCHEMA_VERSION:
+            raise IntegrityError(
+                "physical schema version mismatch: "
+                f"expected {_PHYSICAL_SCHEMA_VERSION}, found {user_version}"
+            )
+        stored = self._stored_table_definitions()
+        expected_names = set(_TABLE_DEFINITIONS)
+        actual_names = set(stored)
+        if actual_names != expected_names:
+            missing = sorted(expected_names - actual_names)
+            extra = sorted(actual_names - expected_names)
+            raise IntegrityError(
+                f"physical schema table set mismatch: missing={missing}, extra={extra}"
+            )
+        for name, expected_sql in _TABLE_DEFINITIONS.items():
+            if _normalized_sql(stored[name]) != _normalized_sql(expected_sql):
+                raise IntegrityError(
+                    f"physical schema table definition mismatch: {name}"
+                )
 
     def _verify_append_only_triggers(self) -> None:
         stored = {
@@ -348,15 +388,17 @@ class ExperimentRepository:
             for row in self._connection.execute(
                 "SELECT name, sql FROM sqlite_master WHERE type = 'trigger'"
             )
-            if row["name"] in _APPEND_ONLY_TRIGGER_SQL
         }
+        expected_names = set(_APPEND_ONLY_TRIGGER_SQL)
+        actual_names = set(stored)
+        if actual_names != expected_names:
+            missing = sorted(expected_names - actual_names)
+            extra = sorted(actual_names - expected_names)
+            raise IntegrityError(
+                f"append-only trigger set mismatch: missing={missing}, extra={extra}"
+            )
         for name, expected_sql in _APPEND_ONLY_TRIGGER_SQL.items():
-            actual_sql = stored.get(name)
-            if actual_sql is None:
-                raise IntegrityError(f"missing append-only trigger: {name}")
-            if _normalized_trigger_sql(actual_sql) != _normalized_trigger_sql(
-                expected_sql
-            ):
+            if _normalized_sql(stored[name]) != _normalized_sql(expected_sql):
                 raise IntegrityError(f"invalid append-only trigger definition: {name}")
 
     def __enter__(self) -> "ExperimentRepository":
@@ -377,16 +419,35 @@ class ExperimentRepository:
             raise RuntimeError("experiment repository is closed")
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(
+        self, mode: str = "IMMEDIATE", operation: str = "repository database operation"
+    ) -> Iterator[None]:
+        """Run a transaction and translate unexpected SQLite lifecycle failures."""
         self._ensure_open()
-        self._connection.execute("BEGIN IMMEDIATE")
+        begin = "BEGIN" if not mode else f"BEGIN {mode}"
+        try:
+            self._connection.execute(begin)
+            yield
+            self._connection.commit()
+        except Exception as error:
+            if self._connection.in_transaction:
+                try:
+                    self._connection.rollback()
+                except sqlite3.Error:
+                    pass
+            if isinstance(error, sqlite3.Error):
+                raise RepositoryDatabaseError(f"{operation}: {error}") from error
+            raise
+
+    @contextmanager
+    def _database_errors(
+        self, operation: str = "repository database operation"
+    ) -> Iterator[None]:
+        """Translate unexpected SQLite errors at public read boundaries."""
         try:
             yield
-        except Exception:
-            self._connection.rollback()
-            raise
-        else:
-            self._connection.commit()
+        except sqlite3.Error as error:
+            raise RepositoryDatabaseError(f"{operation}: {error}") from error
 
     @staticmethod
     def _canonical_json(record: RecordMixin) -> str:
@@ -671,15 +732,16 @@ class ExperimentRepository:
 
     def _load(self, record_type: str, record_id: str) -> RecordMixin:
         self._ensure_open()
-        row = self._connection.execute(
-            "SELECT * FROM evidence_log WHERE record_type = ? AND record_id = ?",
-            (record_type, record_id),
-        ).fetchone()
-        if row is None:
-            raise RecordNotFoundError(f"missing {record_type}: {record_id}")
-        record = self._decode_evidence(row)
-        self._verify_typed_projection(row, record)
-        return record
+        with self._database_errors():
+            row = self._connection.execute(
+                "SELECT * FROM evidence_log WHERE record_type = ? AND record_id = ?",
+                (record_type, record_id),
+            ).fetchone()
+            if row is None:
+                raise RecordNotFoundError(f"missing {record_type}: {record_id}")
+            record = self._decode_evidence(row)
+            self._verify_typed_projection(row, record)
+            return record
 
     def list_runs(self) -> List[RunManifest]:
         return self._list("run_manifest")  # type: ignore[return-value]
@@ -701,16 +763,17 @@ class ExperimentRepository:
 
     def _list(self, record_type: str) -> List[RecordMixin]:
         self._ensure_open()
-        rows = self._connection.execute(
-            "SELECT * FROM evidence_log WHERE record_type = ? ORDER BY sequence",
-            (record_type,),
-        ).fetchall()
-        records = []
-        for row in rows:
-            record = self._decode_evidence(row)
-            self._verify_typed_projection(row, record)
-            records.append(record)
-        return records
+        with self._database_errors():
+            rows = self._connection.execute(
+                "SELECT * FROM evidence_log WHERE record_type = ? ORDER BY sequence",
+                (record_type,),
+            ).fetchall()
+            records = []
+            for row in rows:
+                record = self._decode_evidence(row)
+                self._verify_typed_projection(row, record)
+                records.append(record)
+            return records
 
     def list_evidence(
         self, *, record_type: Optional[str] = None
@@ -724,7 +787,10 @@ class ExperimentRepository:
             query += " WHERE record_type = ?"
             parameters = (record_type,)
         query += " ORDER BY sequence"
-        return [self._entry(row) for row in self._connection.execute(query, parameters)]
+        with self._database_errors():
+            return [
+                self._entry(row) for row in self._connection.execute(query, parameters)
+            ]
 
     def iter_evidence(
         self, *, record_type: Optional[str] = None
@@ -850,61 +916,69 @@ class ExperimentRepository:
                 f"model_outputs projection mismatch for evidence sequence {evidence['sequence']}"
             )
 
-    def verify_integrity(self) -> IntegrityReport:
-        """Validate guards, hashes, timestamps, v2 payloads, projections, and references.
+    def _read_integrity_evidence(self) -> List[sqlite3.Row]:
+        """Read evidence after the verifier's deferred transaction establishes a snapshot."""
+        return self._connection.execute(
+            "SELECT * FROM evidence_log ORDER BY sequence"
+        ).fetchall()
 
+    def verify_integrity(self) -> IntegrityReport:
+        """Validate physical format, guards, evidence, projections, and references.
+
+        The complete scan runs in one deferred read transaction. WAL writers may commit
+        concurrently, while every count and cross-table check observes the same snapshot.
         Returns a report only on success; the first detected defect raises
         :class:`IntegrityError` with the affected evidence/table identity.
         """
         self._ensure_open()
-        self._verify_append_only_triggers()
-        evidence_rows = self._connection.execute(
-            "SELECT * FROM evidence_log ORDER BY sequence"
-        ).fetchall()
-        counts: Counter[str] = Counter()
-        for row in evidence_rows:
-            record = self._decode_evidence(row)
-            self._verify_typed_projection(row, record)
-            self._verify_record_references(record)
-            counts[row["record_type"]] += 1
+        with self._transaction("", "repository integrity verification"):
+            self._verify_physical_schema()
+            self._verify_append_only_triggers()
+            evidence_rows = self._read_integrity_evidence()
+            counts: Counter[str] = Counter()
+            for row in evidence_rows:
+                record = self._decode_evidence(row)
+                self._verify_typed_projection(row, record)
+                self._verify_record_references(record)
+                counts[row["record_type"]] += 1
 
-        for spec in _SPECS:
-            typed_rows = self._connection.execute(
-                f"SELECT {spec.id_attribute}, evidence_sequence FROM {spec.table}"
+            for spec in _SPECS:
+                typed_rows = self._connection.execute(
+                    f"SELECT {spec.id_attribute}, evidence_sequence FROM {spec.table}"
+                ).fetchall()
+                for typed in typed_rows:
+                    evidence = self._connection.execute(
+                        "SELECT record_type, record_id FROM evidence_log WHERE sequence = ?",
+                        (typed["evidence_sequence"],),
+                    ).fetchone()
+                    if (
+                        evidence is None
+                        or evidence["record_type"] != spec.record_type
+                        or evidence["record_id"] != typed[spec.id_attribute]
+                    ):
+                        raise IntegrityError(
+                            f"orphan or mismatched {spec.table} typed row: "
+                            f"{typed[spec.id_attribute]}"
+                        )
+            model_rows = self._connection.execute(
+                "SELECT outcome_id, evidence_sequence FROM model_outputs"
             ).fetchall()
-            for typed in typed_rows:
-                evidence = self._connection.execute(
-                    "SELECT record_type, record_id FROM evidence_log WHERE sequence = ?",
-                    (typed["evidence_sequence"],),
+            for model_row in model_rows:
+                outcome = self._connection.execute(
+                    "SELECT evidence_sequence FROM outcomes WHERE outcome_id = ?",
+                    (model_row["outcome_id"],),
                 ).fetchone()
                 if (
-                    evidence is None
-                    or evidence["record_type"] != spec.record_type
-                    or evidence["record_id"] != typed[spec.id_attribute]
+                    outcome is None
+                    or outcome["evidence_sequence"] != model_row["evidence_sequence"]
                 ):
                     raise IntegrityError(
-                        f"orphan or mismatched {spec.table} typed row: "
-                        f"{typed[spec.id_attribute]}"
+                        f"orphan or mismatched model_outputs row: {model_row['outcome_id']}"
                     )
-        model_rows = self._connection.execute(
-            "SELECT outcome_id, evidence_sequence FROM model_outputs"
-        ).fetchall()
-        for model_row in model_rows:
-            outcome = self._connection.execute(
-                "SELECT evidence_sequence FROM outcomes WHERE outcome_id = ?",
-                (model_row["outcome_id"],),
-            ).fetchone()
-            if (
-                outcome is None
-                or outcome["evidence_sequence"] != model_row["evidence_sequence"]
-            ):
-                raise IntegrityError(
-                    f"orphan or mismatched model_outputs row: {model_row['outcome_id']}"
-                )
-        return IntegrityReport(
-            evidence_rows=len(evidence_rows),
-            per_type_counts=MappingProxyType(dict(sorted(counts.items()))),
-        )
+            return IntegrityReport(
+                evidence_rows=len(evidence_rows),
+                per_type_counts=MappingProxyType(dict(sorted(counts.items()))),
+            )
 
     def _verify_record_references(self, record: RecordMixin) -> None:
         try:

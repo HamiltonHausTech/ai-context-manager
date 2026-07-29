@@ -8,6 +8,7 @@ from .repository import (
     IntegrityReport,
     RecordNotFoundError,
     ReferenceIntegrityError,
+    RepositoryDatabaseError,
     RepositoryError,
 )
 from .schema import (
@@ -35,6 +36,7 @@ __all__ = [
     "EvidenceEntry",
     "IntegrityReport",
     "RepositoryError",
+    "RepositoryDatabaseError",
     "DuplicateRecordError",
     "ReferenceIntegrityError",
     "RecordNotFoundError",
