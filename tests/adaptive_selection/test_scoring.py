@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Sequence
 from dataclasses import FrozenInstanceError, dataclass, replace
 from inspect import signature
 
@@ -8,6 +9,7 @@ from experiments.adaptive_selection.schema import RubricCriterion, ScoringRubric
 from experiments.adaptive_selection.scoring import (
     BlindedAssessment,
     CorrectionAssessment,
+    CriterionArithmetic,
     EvidenceSpan,
     FindingAssessment,
     NegativeFindingSpec,
@@ -373,6 +375,141 @@ def test_evidence_span_structurally_rejects_metadata_smuggling(smuggled):
         EvidenceSpan.from_dict(payload)
     with pytest.raises(ValueError, match="EvidenceSpan"):
         StepAssessment("s", "met", (payload,))
+
+
+def test_evidence_span_subclass_metadata_smuggling_is_sealed():
+    def plain():
+        class Forged(EvidenceSpan):
+            pass
+
+    def data():
+        @dataclass(frozen=True)
+        class Forged(EvidenceSpan):
+            selector_mode: str = "adaptive"
+
+    def custom():
+        class Forged(EvidenceSpan):
+            def __init__(self, selector_mode):
+                super().__init__(0, 1, "x")
+                object.__setattr__(self, "selector_mode", selector_mode)
+
+    for define in (plain, data, custom):
+        with pytest.raises(TypeError, match="cannot be subclassed"):
+            define()
+
+    original_hook = EvidenceSpan.__dict__["__init_subclass__"]
+    try:
+        setattr(
+            EvidenceSpan,
+            "__init_subclass__",
+            classmethod(lambda cls, **kwargs: None),
+        )
+
+        class LegacyForged(EvidenceSpan):
+            pass
+
+    finally:
+        setattr(EvidenceSpan, "__init_subclass__", original_hook)
+    forged = LegacyForged(0, 1, "x")
+    object.__setattr__(forged, "selector_mode", "adaptive")
+    with pytest.raises(ValueError, match="exact EvidenceSpan"):
+        StepAssessment("s", "met", (forged,))
+
+
+def test_public_tuple_fields_reject_iterators_without_iteration():
+    def forbidden_iterable():
+        raise AssertionError("public tuple field consumed an iterator")
+        yield None
+
+    factories = (
+        lambda value: spec(expected_criterion_ids=value),
+        lambda value: spec(required_steps=value),
+        lambda value: spec(negative_findings=value),
+        lambda value: StepAssessment("s", "met", value),
+        lambda value: FindingAssessment("f", "present", value),
+        lambda value: CorrectionAssessment("c", "fixed", value),
+        lambda value: assessment(steps=value),
+        lambda value: assessment(findings=value),
+        lambda value: assessment(corrections=value),
+        lambda value: CriterionArithmetic(
+            "accuracy", value, (), (), "1", "0", "0", "0", "0"
+        ),
+        lambda value: CriterionArithmetic(
+            "accuracy", (), value, (), "1", "0", "0", "0", "0"
+        ),
+        lambda value: CriterionArithmetic(
+            "accuracy", (), (), value, "1", "0", "0", "0", "0"
+        ),
+    )
+    for factory in factories:
+        with pytest.raises(ValueError, match="tuple or list"):
+            factory(forbidden_iterable())
+
+    class ArbitrarySequence(Sequence):
+        def __len__(self):
+            raise AssertionError("arbitrary Sequence length was inspected")
+
+        def __getitem__(self, index):
+            raise AssertionError("arbitrary Sequence was consumed")
+
+    for invalid in ("scalar", ArbitrarySequence()):
+        with pytest.raises(ValueError, match="tuple or list"):
+            StepAssessment("s", "met", invalid)
+
+
+@pytest.mark.parametrize(
+    "factory, oversized, field",
+    [
+        (
+            lambda value: spec(expected_criterion_ids=value),
+            [object()] * 65,
+            "expected_criterion_ids",
+        ),
+        (lambda value: spec(required_steps=value), [object()] * 129, "required_steps"),
+        (
+            lambda value: spec(negative_findings=value),
+            [object()] * 129,
+            "negative_findings",
+        ),
+        (
+            lambda value: StepAssessment("s", "met", value),
+            [object()] * 257,
+            "supporting_evidence",
+        ),
+        (lambda value: assessment(steps=value), [object()] * 129, "step_assessments"),
+        (
+            lambda value: assessment(findings=value),
+            [object()] * 129,
+            "finding_assessments",
+        ),
+        (lambda value: assessment(corrections=value), [object()] * 257, "corrections"),
+        (
+            lambda value: CriterionArithmetic(
+                "accuracy", value, (), (), "1", "0", "0", "0", "0"
+            ),
+            [object()] * 129,
+            "met_step_ids",
+        ),
+    ],
+)
+def test_public_tuple_field_caps_precede_item_validation(factory, oversized, field):
+    with pytest.raises(ValueError, match="{}.*at most".format(field)):
+        factory(oversized)
+
+
+def test_public_tuple_fields_accept_exact_lists_and_tuples():
+    span = EvidenceSpan(0, 1, "x")
+    assert StepAssessment("s", "met", [span]).supporting_evidence == (span,)
+    assert FindingAssessment("f", "present", [span]).supporting_evidence == (span,)
+    assert CorrectionAssessment("c", "fixed", [span]).supporting_evidence == (span,)
+    assert TaskScoringSpec.from_dict(spec().to_dict()) == spec()
+    assert BlindedAssessment.from_dict(assessment().to_dict()) == assessment()
+    arithmetic = CriterionArithmetic(
+        "accuracy", ["met"], ("missed",), [], "1", "1", "0", "1", "1"
+    )
+    assert arithmetic.met_step_ids == ("met",)
+    assert arithmetic.no_credit_step_ids == ("missed",)
+    assert arithmetic.present_finding_ids == ()
 
 
 def test_evidence_span_bounds_and_status_evidence_exclusivity():

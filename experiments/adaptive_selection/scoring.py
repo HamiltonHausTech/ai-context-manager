@@ -5,7 +5,7 @@ has no access to selector conditions, retrieval measurements, context labels, or
 telemetry.  Semantic judgments must be made upstream and frozen as ``BlindedAssessment``.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 import hashlib
@@ -122,13 +122,29 @@ def _mapping(data: Any) -> Mapping:
     return data
 
 
-def _sequence(data: Mapping, key: str) -> Tuple[Any, ...]:
+def _bounded_collection(name: str, value: Any, maximum: int) -> Tuple[Any, ...]:
+    if type(value) not in (tuple, list):
+        raise ValueError("{} must be an exact tuple or list".format(name))
+    if len(value) > maximum:
+        raise ValueError("{} supports at most {} items".format(name, maximum))
+    return tuple(value)
+
+
+def _bounded_tuple(
+    name: str, value: Any, maximum: int, item_type: Type[Any]
+) -> Tuple[Any, ...]:
+    items = _bounded_collection(name, value, maximum)
+    if not all(type(item) is item_type for item in items):
+        raise ValueError(
+            "{} must contain only exact {} values".format(name, item_type.__name__)
+        )
+    return items
+
+
+def _sequence(data: Mapping, key: str, maximum: int) -> Tuple[Any, ...]:
     if key not in data:
         raise ValueError("{} is required".format(key))
-    value = data[key]
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
-        raise ValueError("{} must be a sequence".format(key))
-    return tuple(value)
+    return _bounded_collection(key, data[key], maximum)
 
 
 def _hash(payload: Mapping) -> str:
@@ -168,6 +184,9 @@ class EvidenceSpan(CanonicalRecord):
     start_offset: int
     end_offset: int
     quote: str
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("EvidenceSpan cannot be subclassed")
 
     def __post_init__(self) -> None:
         if (
@@ -268,34 +287,35 @@ class TaskScoringSpec(CanonicalRecord):
             "provenance",
         ):
             _nonempty(name, getattr(self, name))
-        object.__setattr__(
-            self, "expected_criterion_ids", tuple(self.expected_criterion_ids)
+        expected_criterion_ids = _bounded_tuple(
+            "expected_criterion_ids",
+            self.expected_criterion_ids,
+            _MAX_CRITERIA,
+            str,
         )
-        object.__setattr__(self, "required_steps", tuple(self.required_steps))
-        object.__setattr__(self, "negative_findings", tuple(self.negative_findings))
+        required_steps = _bounded_tuple(
+            "required_steps", self.required_steps, _MAX_RULES, RequiredStepSpec
+        )
+        negative_findings = _bounded_tuple(
+            "negative_findings",
+            self.negative_findings,
+            _MAX_RULES,
+            NegativeFindingSpec,
+        )
+        object.__setattr__(self, "expected_criterion_ids", expected_criterion_ids)
+        object.__setattr__(self, "required_steps", required_steps)
+        object.__setattr__(self, "negative_findings", negative_findings)
         if not self.expected_criterion_ids or len(
             set(self.expected_criterion_ids)
         ) != len(self.expected_criterion_ids):
             raise ValueError("expected criterion IDs must be nonempty and unique")
         for criterion_id in self.expected_criterion_ids:
             _identifier("expected criterion ID", criterion_id)
-        if not all(isinstance(item, RequiredStepSpec) for item in self.required_steps):
-            raise ValueError("required_steps must contain RequiredStepSpec records")
-        if not all(
-            isinstance(item, NegativeFindingSpec) for item in self.negative_findings
-        ):
-            raise ValueError(
-                "negative_findings must contain NegativeFindingSpec records"
-            )
         step_ids = tuple(item.step_id for item in self.required_steps)
         finding_ids = tuple(item.finding_id for item in self.negative_findings)
         if len(step_ids) + len(finding_ids) > _MAX_RULES:
             raise ValueError(
                 "scoring specs support at most {} rules".format(_MAX_RULES)
-            )
-        if len(self.expected_criterion_ids) > _MAX_CRITERIA:
-            raise ValueError(
-                "scoring specs support at most {} criteria".format(_MAX_CRITERIA)
             )
         if len(set(step_ids + finding_ids)) != len(step_ids) + len(finding_ids):
             raise ValueError("rule IDs must be globally unique")
@@ -346,14 +366,16 @@ class TaskScoringSpec(CanonicalRecord):
         data = _mapping(data)
         return cls._flat(
             data,
-            expected_criterion_ids=_sequence(data, "expected_criterion_ids"),
+            expected_criterion_ids=_sequence(
+                data, "expected_criterion_ids", _MAX_CRITERIA
+            ),
             required_steps=tuple(
                 RequiredStepSpec.from_dict(item)
-                for item in _sequence(data, "required_steps")
+                for item in _sequence(data, "required_steps", _MAX_RULES)
             ),
             negative_findings=tuple(
                 NegativeFindingSpec.from_dict(item)
-                for item in _sequence(data, "negative_findings")
+                for item in _sequence(data, "negative_findings", _MAX_RULES)
             ),
         )
 
@@ -368,13 +390,12 @@ class StepAssessment(CanonicalRecord):
         _identifier("step_id", self.step_id)
         if self.status not in {"met", "not_met", "contradicted", "unresolved"}:
             raise ValueError("step status is invalid")
-        evidence = tuple(self.supporting_evidence)
-        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
-            isinstance(item, EvidenceSpan) for item in evidence
-        ):
-            raise ValueError(
-                "supporting_evidence must contain only EvidenceSpan records"
-            )
+        evidence = _bounded_tuple(
+            "supporting_evidence",
+            self.supporting_evidence,
+            _MAX_EVIDENCE_SPANS,
+            EvidenceSpan,
+        )
         if self.status in {"met", "contradicted"} and not evidence:
             raise ValueError(
                 "supporting_evidence must be nonempty for met/contradicted"
@@ -390,7 +411,7 @@ class StepAssessment(CanonicalRecord):
             data,
             supporting_evidence=tuple(
                 EvidenceSpan.from_dict(item)
-                for item in _sequence(data, "supporting_evidence")
+                for item in _sequence(data, "supporting_evidence", _MAX_EVIDENCE_SPANS)
             ),
         )
 
@@ -405,13 +426,12 @@ class FindingAssessment(CanonicalRecord):
         _identifier("finding_id", self.finding_id)
         if self.status not in {"present", "absent", "unresolved"}:
             raise ValueError("finding status is invalid")
-        evidence = tuple(self.supporting_evidence)
-        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
-            isinstance(item, EvidenceSpan) for item in evidence
-        ):
-            raise ValueError(
-                "supporting_evidence must contain only EvidenceSpan records"
-            )
+        evidence = _bounded_tuple(
+            "supporting_evidence",
+            self.supporting_evidence,
+            _MAX_EVIDENCE_SPANS,
+            EvidenceSpan,
+        )
         if self.status == "present" and not evidence:
             raise ValueError("supporting_evidence must be nonempty for present")
         if self.status in {"absent", "unresolved"} and evidence:
@@ -425,7 +445,7 @@ class FindingAssessment(CanonicalRecord):
             data,
             supporting_evidence=tuple(
                 EvidenceSpan.from_dict(item)
-                for item in _sequence(data, "supporting_evidence")
+                for item in _sequence(data, "supporting_evidence", _MAX_EVIDENCE_SPANS)
             ),
         )
 
@@ -439,13 +459,12 @@ class CorrectionAssessment(CanonicalRecord):
     def __post_init__(self) -> None:
         _identifier("correction_id", self.correction_id)
         _nonempty("description", self.description)
-        evidence = tuple(self.supporting_evidence)
-        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
-            isinstance(item, EvidenceSpan) for item in evidence
-        ):
-            raise ValueError(
-                "supporting_evidence must contain only EvidenceSpan records"
-            )
+        evidence = _bounded_tuple(
+            "supporting_evidence",
+            self.supporting_evidence,
+            _MAX_EVIDENCE_SPANS,
+            EvidenceSpan,
+        )
         if not evidence:
             raise ValueError("supporting_evidence must be nonempty")
         object.__setattr__(self, "supporting_evidence", evidence)
@@ -457,7 +476,7 @@ class CorrectionAssessment(CanonicalRecord):
             data,
             supporting_evidence=tuple(
                 EvidenceSpan.from_dict(item)
-                for item in _sequence(data, "supporting_evidence")
+                for item in _sequence(data, "supporting_evidence", _MAX_EVIDENCE_SPANS)
             ),
         )
 
@@ -482,24 +501,25 @@ class BlindedAssessment(CanonicalRecord):
         for name in ("rater_version", "provenance"):
             _nonempty(name, getattr(self, name))
         _timestamp("assessment_timestamp", self.assessment_timestamp)
-        object.__setattr__(self, "step_assessments", tuple(self.step_assessments))
-        object.__setattr__(self, "finding_assessments", tuple(self.finding_assessments))
-        object.__setattr__(self, "corrections", tuple(self.corrections))
-        if not all(isinstance(item, StepAssessment) for item in self.step_assessments):
-            raise ValueError("step_assessments must contain StepAssessment records")
-        if not all(
-            isinstance(item, FindingAssessment) for item in self.finding_assessments
-        ):
-            raise ValueError(
-                "finding_assessments must contain FindingAssessment records"
-            )
-        if not all(isinstance(item, CorrectionAssessment) for item in self.corrections):
-            raise ValueError("corrections must contain CorrectionAssessment records")
+        step_assessments = _bounded_tuple(
+            "step_assessments", self.step_assessments, _MAX_RULES, StepAssessment
+        )
+        finding_assessments = _bounded_tuple(
+            "finding_assessments",
+            self.finding_assessments,
+            _MAX_RULES,
+            FindingAssessment,
+        )
+        corrections = _bounded_tuple(
+            "corrections",
+            self.corrections,
+            _MAX_CORRECTIONS,
+            CorrectionAssessment,
+        )
+        object.__setattr__(self, "step_assessments", step_assessments)
+        object.__setattr__(self, "finding_assessments", finding_assessments)
+        object.__setattr__(self, "corrections", corrections)
         correction_ids = tuple(item.correction_id for item in self.corrections)
-        if len(correction_ids) > _MAX_CORRECTIONS:
-            raise ValueError(
-                "assessments support at most {} corrections".format(_MAX_CORRECTIONS)
-            )
         if len(set(correction_ids)) != len(correction_ids):
             raise ValueError("correction IDs must be unique")
 
@@ -510,15 +530,15 @@ class BlindedAssessment(CanonicalRecord):
             data,
             step_assessments=tuple(
                 StepAssessment.from_dict(item)
-                for item in _sequence(data, "step_assessments")
+                for item in _sequence(data, "step_assessments", _MAX_RULES)
             ),
             finding_assessments=tuple(
                 FindingAssessment.from_dict(item)
-                for item in _sequence(data, "finding_assessments")
+                for item in _sequence(data, "finding_assessments", _MAX_RULES)
             ),
             corrections=tuple(
                 CorrectionAssessment.from_dict(item)
-                for item in _sequence(data, "corrections")
+                for item in _sequence(data, "corrections", _MAX_CORRECTIONS)
             ),
         )
 
@@ -561,7 +581,7 @@ class CriterionArithmetic(CanonicalRecord):
     def __post_init__(self) -> None:
         _identifier("criterion_id", self.criterion_id)
         for name in ("met_step_ids", "no_credit_step_ids", "present_finding_ids"):
-            value = tuple(getattr(self, name))
+            value = _bounded_tuple(name, getattr(self, name), _MAX_RULES, str)
             if len(set(value)) != len(value):
                 raise ValueError("{} must be unique".format(name))
             for rule_id in value:
@@ -584,9 +604,9 @@ class CriterionArithmetic(CanonicalRecord):
         data = _mapping(data)
         return cls._flat(
             data,
-            met_step_ids=_sequence(data, "met_step_ids"),
-            no_credit_step_ids=_sequence(data, "no_credit_step_ids"),
-            present_finding_ids=_sequence(data, "present_finding_ids"),
+            met_step_ids=_sequence(data, "met_step_ids", _MAX_RULES),
+            no_credit_step_ids=_sequence(data, "no_credit_step_ids", _MAX_RULES),
+            present_finding_ids=_sequence(data, "present_finding_ids", _MAX_RULES),
         )
 
 
