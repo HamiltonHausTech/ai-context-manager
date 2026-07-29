@@ -10,6 +10,7 @@ that does not fit is excluded and later, smaller items may still be selected.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import math
+import re
 from types import MappingProxyType
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
@@ -49,16 +50,70 @@ def _freeze_weights(values: Optional[Mapping[str, float]]) -> Mapping[str, float
         raise ValueError("feature_weights must be a mapping")
     frozen: Dict[str, float] = {}
     for key, value in values.items():
-        if not isinstance(key, str) or not key.strip():
-            raise ValueError("feature weight names must be nonempty strings")
+        if key != "confidence":
+            _validate_feature_name(key, "feature weight")
         frozen[key] = _finite("feature weight", value)
     return MappingProxyType({key: frozen[key] for key in sorted(frozen)})
 
 
-def _visible_features(item: ContextItem) -> Tuple[str, ...]:
-    """Extract reusable visible features, deliberately excluding item IDs/provenance."""
+_FEATURE_RE = re.compile(r"^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9._/-]*$")
+_RESERVED_FEATURE_TERMS = frozenset(
+    {
+        "adaptation",
+        "feedback",
+        "gold",
+        "heldout",
+        "irrelevant",
+        "label",
+        "misleading",
+        "required",
+        "useful",
+    }
+)
+_APPROVED_METADATA_FIELDS = (
+    "control_attributes",
+    "format",
+    "learning_attributes",
+)
+_FORBIDDEN_FEATURE_NAMESPACES = frozenset(
+    {"context_item_id", "id", "metadata", "provenance", "source"}
+)
 
-    features = ["source:{}".format(item.source)]
+
+def _validate_feature_name(
+    feature: Any, name: str = "reusable feature", candidate_ids: Sequence[str] = ()
+) -> str:
+    """Validate one corpus-independent, namespaced policy feature.
+
+    Reusable features have a strict ``namespace:value`` grammar.  Evaluation-label
+    vocabulary and strings containing any candidate ID are forbidden even in approved
+    metadata fields; rejecting them is safer than manufacturing a policy key from them.
+    """
+
+    if not isinstance(feature, str) or not _FEATURE_RE.fullmatch(feature):
+        raise ValueError("{} must be a safe namespaced feature".format(name))
+    normalized = feature.casefold()
+    if normalized.split(":", 1)[0] in _FORBIDDEN_FEATURE_NAMESPACES:
+        raise ValueError("{} uses a non-reusable namespace".format(name))
+    terms = set(re.findall(r"[a-z0-9]+", normalized))
+    if terms & _RESERVED_FEATURE_TERMS or {"held", "out"} <= terms:
+        raise ValueError("{} contains reserved evaluation vocabulary".format(name))
+    if any(candidate_id.casefold() in normalized for candidate_id in candidate_ids):
+        raise ValueError("{} contains a candidate ID".format(name))
+    return feature
+
+
+def _visible_features(
+    item: ContextItem, candidate_ids: Sequence[str]
+) -> Tuple[str, ...]:
+    """Extract only approved, reusable metadata values and confidence bins.
+
+    Source, provenance, IDs, arbitrary metadata paths/scalars, and path-prefixed aliases
+    are intentionally invisible.  Approved values must already be safe namespaced
+    strings; malformed or evaluation-like values are rejected explicitly.
+    """
+
+    features = []
     if item.confidence < 1.0 / 3.0:
         features.append("confidence:low")
     elif item.confidence < 2.0 / 3.0:
@@ -66,22 +121,34 @@ def _visible_features(item: ContextItem) -> Tuple[str, ...]:
     else:
         features.append("confidence:high")
 
-    def visit(path: str, value: Any) -> None:
-        if isinstance(value, Mapping):
-            for key in sorted(value):
-                visit("{}.{}".format(path, key) if path else key, value[key])
-        elif isinstance(value, tuple):
-            for member in value:
-                visit(path, member)
-        elif value is not None:
-            rendered = str(value).casefold() if isinstance(value, bool) else str(value)
-            features.append("metadata.{}:{}".format(path, rendered))
-            if isinstance(value, str):
-                # Ontology values are useful as policy keys independent of storage path.
-                features.append(value)
-
-    visit("", item.metadata)
+    for field in _APPROVED_METADATA_FIELDS:
+        if field not in item.metadata:
+            continue
+        value = item.metadata[field]
+        values = value if isinstance(value, tuple) else (value,)
+        if not values or any(not isinstance(member, str) for member in values):
+            raise ValueError("metadata.{} must contain feature strings".format(field))
+        for member in values:
+            validated = _validate_feature_name(
+                member, "metadata.{} feature".format(field), candidate_ids
+            )
+            if field == "format" and not validated.startswith("format:"):
+                raise ValueError("metadata.format must use the format namespace")
+            features.append(validated)
     return tuple(sorted(set(features)))
+
+
+def _logistic(raw_score: float) -> float:
+    """Map finite raw scores to ``[0, 1]`` with a stable logistic transform.
+
+    This monotonic normalization preserves ordinary raw-policy ordering without the
+    saturation ties caused by RetrievalPipeline's defensive hard clamp.
+    """
+
+    if raw_score >= 0.0:
+        return 1.0 / (1.0 + math.exp(-raw_score))
+    exponential = math.exp(raw_score)
+    return exponential / (1.0 + exponential)
 
 
 class _ContextItemComponent(ContextComponent):
@@ -301,20 +368,26 @@ class StaticPolicySelector(_BaseSelector):
         if self.relevance_weight + self.importance_weight <= 0.0:
             raise ValueError("at least one policy weight must be positive")
 
-    def _score_details(self, item: ContextItem) -> Tuple[float, Dict[str, ScoreValue]]:
+    def _score_details(
+        self, item: ContextItem, candidate_ids: Sequence[str]
+    ) -> Tuple[float, Dict[str, ScoreValue]]:
         factors: Dict[str, ScoreValue] = {}
-        score = self.feature_weights.get("confidence", 0.0) * item.confidence
-        factors["static.confidence"] = item.confidence
-        factors["static.weight.confidence"] = self.feature_weights.get(
+        raw_score = self.feature_weights.get("confidence", 0.0) * item.confidence
+        factors["policy.static.confidence"] = item.confidence
+        factors["policy.static.confidence_weight"] = self.feature_weights.get(
             "confidence", 0.0
         )
-        for feature in _visible_features(item):
+        for feature in _visible_features(item, candidate_ids):
             weight = self.feature_weights.get(feature, 0.0)
             if weight:
-                factors["static.feature.{}".format(feature)] = weight
-                score += weight
-        factors["static.score"] = score
-        return score, factors
+                factors["policy.static.feature_weight.{}".format(feature)] = weight
+                raw_score += weight
+        factors["policy.static.raw_score"] = raw_score
+        factors["policy.raw_score"] = raw_score
+        factors["policy.normalization_method"] = "logistic"
+        effective_importance = _logistic(raw_score)
+        factors["policy.effective_importance"] = effective_importance
+        return effective_importance, factors
 
     def _rank(
         self,
@@ -322,6 +395,7 @@ class StaticPolicySelector(_BaseSelector):
         eligible: Sequence[ContextComponent],
         request: RetrievalRequest,
         initial: list,
+        candidate_ids: Sequence[str],
     ) -> Sequence[tuple]:
         details = {}
         rankable = []
@@ -329,7 +403,9 @@ class StaticPolicySelector(_BaseSelector):
             try:
                 if not isinstance(component, _ContextItemComponent):
                     raise TypeError("unexpected component type")
-                details[id(component)] = self._score_details(component.item)
+                details[id(component)] = self._score_details(
+                    component.item, candidate_ids
+                )
                 rankable.append(component)
             except Exception:
                 initial.append(
@@ -348,8 +424,31 @@ class StaticPolicySelector(_BaseSelector):
         enriched = []
         for ranked_item in ranked:
             component, score, factors = ranked_item
-            merged = dict(factors)
+            merged = {}
             merged.update(details[id(component)][1])
+            total_weight = (
+                request.relevance_weight
+                + request.importance_weight
+                + request.recency_weight
+            )
+            merged["retrieval.relevance"] = factors["relevance"]
+            merged["retrieval.relevance_method"] = factors["relevance_method"]
+            merged["retrieval.importance"] = factors["importance"]
+            merged["retrieval.recency"] = factors["recency"]
+            merged["retrieval.relevance_weight"] = request.relevance_weight
+            merged["retrieval.importance_weight"] = request.importance_weight
+            merged["retrieval.recency_weight"] = request.recency_weight
+            merged["retrieval.weighted_relevance"] = (
+                factors["relevance"] * request.relevance_weight
+            )
+            merged["retrieval.weighted_importance"] = (
+                factors["importance"] * request.importance_weight
+            )
+            merged["retrieval.weighted_recency"] = (
+                factors["recency"] * request.recency_weight
+            )
+            merged["retrieval.total_weight"] = total_weight
+            merged["retrieval.final_score"] = score
             enriched.append((component, score, merged))
         return enriched
 
@@ -358,8 +457,11 @@ class StaticPolicySelector(_BaseSelector):
         components = tuple(
             _ContextItemComponent(item) for item in inputs.candidate_context
         )
+        candidate_ids = tuple(item.context_item_id for item in inputs.candidate_context)
         pipeline = self._pipeline(
-            lambda component: self._score_details(component.item)[0]  # type: ignore[attr-defined]
+            lambda component: self._score_details(  # type: ignore[attr-defined]
+                component.item, candidate_ids
+            )[0]
         )
         request = RetrievalRequest(
             query=inputs.task_prompt,
@@ -369,7 +471,7 @@ class StaticPolicySelector(_BaseSelector):
             recency_weight=0.0,
         )
         eligible, initial = pipeline.select_candidates(components, request)
-        ranked = self._rank(pipeline, eligible, request, initial)
+        ranked = self._rank(pipeline, eligible, request, initial, candidate_ids)
         result = pipeline.pack_budget(ranked, request, initial)
         return self._finalize(inputs, components, eligible, result)
 
@@ -378,8 +480,9 @@ class AdaptivePolicySelector(StaticPolicySelector):
     """Static selection plus caller-supplied reusable-feature utility estimates.
 
     Learning and feedback processing are intentionally out of scope.  A mapping is
-    copied at construction; a callback is queried only by reusable visible feature name.
-    Context-item IDs are never supplied to either utility interface.
+    copied at construction; a callback is queried only once per reusable visible feature
+    for the selector instance, with both successful and failed results cached. Context-item
+    IDs are never supplied to either utility interface.
     """
 
     mode = "adaptive_policy"
@@ -399,13 +502,10 @@ class AdaptivePolicySelector(StaticPolicySelector):
         if utility_estimates is None:
             self._utility_estimates: Optional[UtilityProvider] = None
         elif isinstance(utility_estimates, Mapping):
-            copied = {
-                key: _finite("utility estimate", value)
-                for key, value in utility_estimates.items()
-                if isinstance(key, str) and key.strip()
-            }
-            if len(copied) != len(utility_estimates):
-                raise ValueError("utility feature names must be nonempty strings")
+            copied = {}
+            for key, value in utility_estimates.items():
+                validated = _validate_feature_name(key, "utility feature")
+                copied[validated] = _finite("utility estimate", value)
             self._utility_estimates = MappingProxyType(
                 {key: copied[key] for key in sorted(copied)}
             )
@@ -413,27 +513,47 @@ class AdaptivePolicySelector(StaticPolicySelector):
             self._utility_estimates = utility_estimates
         else:
             raise ValueError("utility_estimates must be a mapping or callback")
+        self._utility_cache: Dict[str, Tuple[bool, float]] = {}
 
     def _utility(self, feature: str) -> float:
         if self._utility_estimates is None:
             return 0.0
         if isinstance(self._utility_estimates, Mapping):
             return self._utility_estimates.get(feature, 0.0)
-        return _finite("utility callback result", self._utility_estimates(feature))
+        cached = self._utility_cache.get(feature)
+        if cached is None:
+            try:
+                value = _finite(
+                    "utility callback result", self._utility_estimates(feature)
+                )
+                cached = (True, value)
+            except Exception:
+                cached = (False, 0.0)
+            self._utility_cache[feature] = cached
+        if not cached[0]:
+            raise ValueError("utility callback failed for reusable feature")
+        return cached[1]
 
-    def _score_details(self, item: ContextItem) -> Tuple[float, Dict[str, ScoreValue]]:
-        static_score, factors = super()._score_details(item)
+    def _score_details(
+        self, item: ContextItem, candidate_ids: Sequence[str]
+    ) -> Tuple[float, Dict[str, ScoreValue]]:
+        _static_effective, factors = super()._score_details(item, candidate_ids)
+        static_raw_score = float(factors["policy.static.raw_score"])
         utility = 0.0
-        for feature in _visible_features(item):
+        for feature in _visible_features(item, candidate_ids):
             estimate = self._utility(feature)
             if estimate:
-                factors["adaptive.utility.{}".format(feature)] = estimate
+                factors["policy.adaptive.feature_utility.{}".format(feature)] = estimate
                 utility += estimate
-        factors["adaptive.utility_total"] = utility
-        factors["adaptive.learning_weight"] = self.learning_weight
-        score = static_score + self.learning_weight * utility
-        factors["adaptive.score"] = score
-        return score, factors
+        contribution = self.learning_weight * utility
+        raw_score = static_raw_score + contribution
+        factors["policy.adaptive.raw_utility"] = utility
+        factors["policy.adaptive.learning_weight"] = self.learning_weight
+        factors["policy.adaptive.weighted_utility_contribution"] = contribution
+        factors["policy.adaptive.raw_score"] = raw_score
+        factors["policy.raw_score"] = raw_score
+        factors["policy.effective_importance"] = _logistic(raw_score)
+        return float(factors["policy.effective_importance"]), factors
 
 
 __all__ = [

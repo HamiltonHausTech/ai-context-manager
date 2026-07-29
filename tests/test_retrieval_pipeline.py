@@ -32,9 +32,7 @@ def test_retrieval_result_explains_filters_and_inclusions():
 
 def test_retrieval_result_explains_budget_exclusion():
     manager = ContextManager()
-    manager.register_component(
-        TaskSummaryComponent("large", "Large", "word " * 100)
-    )
+    manager.register_component(TaskSummaryComponent("large", "Large", "word " * 100))
 
     result = manager.retrieve(RetrievalRequest(token_budget=3))
 
@@ -58,6 +56,39 @@ def test_retrieval_pipeline_accepts_authoritative_component_token_counter():
     assert result.used_tokens == 1
     assert result.items[0].tokens == 1
     assert result.decisions[0].tokens == 1
+
+
+def test_injected_token_counter_receives_summary_and_drives_replacement_count():
+    from ai_context_manager.retrieval import RetrievalPipeline
+
+    class FixedSummarizer:
+        def summarize(self, text, max_tokens):
+            return "replacement summary"
+
+    component = TaskSummaryComponent("summarized", "Large", "word " * 100)
+    calls = []
+
+    def counter(received_component, content):
+        calls.append((received_component, content))
+        return 100 if content == component.get_content() else 2
+
+    pipeline = RetrievalPipeline(
+        lambda _component: 1.0,
+        summarizer=FixedSummarizer(),
+        token_counter=counter,
+    )
+    result = pipeline.retrieve(
+        [component], RetrievalRequest(token_budget=3, summarize_if_needed=True)
+    )
+
+    assert [content for _component, content in calls] == [
+        component.get_content(),
+        "replacement summary",
+    ]
+    assert all(received is component for received, _content in calls)
+    assert result.items[0].content == "replacement summary"
+    assert result.items[0].tokens == result.used_tokens == 2
+    assert result.decisions[0].tokens == 2
 
 
 def test_retrieval_result_reports_processing_errors():
@@ -98,12 +129,18 @@ def test_query_aware_retrieval_separates_relevance_from_importance():
     manager = ContextManager()
     manager.register_component(
         TaskSummaryComponent(
-            "beer", "Beer definition", "Highly authoritative beer production rule", score=1.0
+            "beer",
+            "Beer definition",
+            "Highly authoritative beer production rule",
+            score=1.0,
         )
     )
     manager.register_component(
         TaskSummaryComponent(
-            "bourbon", "Bourbon law", "Federal bourbon whiskey production requirements", score=0.5
+            "bourbon",
+            "Bourbon law",
+            "Federal bourbon whiskey production requirements",
+            score=0.5,
         )
     )
 
@@ -125,10 +162,14 @@ def test_query_aware_retrieval_separates_relevance_from_importance():
 def test_query_aware_retrieval_can_suppress_redundant_context():
     manager = ContextManager()
     manager.register_component(
-        TaskSummaryComponent("one", "Bourbon", "Bourbon must use new charred oak barrels")
+        TaskSummaryComponent(
+            "one", "Bourbon", "Bourbon must use new charred oak barrels"
+        )
     )
     manager.register_component(
-        TaskSummaryComponent("two", "Bourbon", "Bourbon must use new charred oak barrels")
+        TaskSummaryComponent(
+            "two", "Bourbon", "Bourbon must use new charred oak barrels"
+        )
     )
 
     result = manager.retrieve(
@@ -161,7 +202,9 @@ def test_custom_relevance_scorer_can_recover_conceptual_matches():
             "bond", "Law", "The Bottled-in-Bond Act established spirits standards"
         )
     )
-    manager.register_component(TaskSummaryComponent("beer", "Beer", "Malt beverage rule"))
+    manager.register_component(
+        TaskSummaryComponent("beer", "Beer", "Malt beverage rule")
+    )
 
     result = manager.retrieve(
         RetrievalRequest(query="bourbon legal history", min_relevance=0.2)

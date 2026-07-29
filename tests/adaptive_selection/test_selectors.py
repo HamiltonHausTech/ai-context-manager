@@ -158,10 +158,10 @@ def test_adaptive_without_utility_is_exactly_static():
     ) == tuple(item.context_item_id for item in static.selected_items)
 
 
-def test_visible_feature_utility_changes_ranking_without_item_id_feature():
+def test_approved_reusable_feature_utility_changes_ranking_without_item_id_feature():
     inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
     target = inputs.candidate_context[-1]
-    feature = "source:{}".format(target.source)
+    feature = target.metadata["learning_attributes"][0]
     selector = AdaptivePolicySelector(
         utility_estimates={feature: 10.0},
         learning_weight=1.0,
@@ -178,13 +178,16 @@ def test_visible_feature_utility_changes_ranking_without_item_id_feature():
         for decision in result.decisions
         if decision.context_item_id == target.context_item_id
     )
-    assert target_trace.score_factors["adaptive.utility.{}".format(feature)] == 10.0
+    assert (
+        target_trace.score_factors["policy.adaptive.feature_utility.{}".format(feature)]
+        == 10.0
+    )
     assert not any(target.context_item_id in key for key in target_trace.score_factors)
 
 
 def test_mapping_and_callback_utilities_are_defensively_snapshotted():
     inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
-    feature = "source:{}".format(inputs.candidate_context[0].source)
+    feature = inputs.candidate_context[0].metadata["learning_attributes"][0]
     estimates = {feature: 2.0}
     selector = AdaptivePolicySelector(utility_estimates=estimates)
     estimates[feature] = -100.0
@@ -196,7 +199,8 @@ def test_mapping_and_callback_utilities_are_defensively_snapshotted():
 
     assert first == selector.select(inputs)
     assert any(
-        decision.score_factors.get("adaptive.utility.{}".format(feature)) == 2.0
+        decision.score_factors.get("policy.adaptive.feature_utility.{}".format(feature))
+        == 2.0
         for decision in first.decisions
     )
     assert isinstance(second, SelectionResult)
@@ -204,7 +208,7 @@ def test_mapping_and_callback_utilities_are_defensively_snapshotted():
 
 def test_utility_processing_error_has_one_complete_nonleaking_trace_decision():
     inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
-    failing_feature = "source:{}".format(inputs.candidate_context[0].source)
+    failing_feature = inputs.candidate_context[0].metadata["learning_attributes"][0]
 
     def utility(feature):
         if feature == failing_feature:
@@ -276,7 +280,214 @@ def test_invalid_policy_configuration_and_nonfinite_utilities_are_rejected():
     with pytest.raises(ValueError):
         AdaptivePolicySelector(learning_weight=-1.0)
     with pytest.raises(ValueError):
-        AdaptivePolicySelector(utility_estimates={"source:test": float("nan")})
+        AdaptivePolicySelector(utility_estimates={"signal:test": float("nan")})
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["candidate-123", "source:private", "provenance:private", "metadata.path:value"],
+)
+def test_policy_mappings_reject_non_reusable_feature_keys(key):
+    with pytest.raises(ValueError, match="feature|namespace"):
+        StaticPolicySelector(feature_weights={key: 1.0})
+    with pytest.raises(ValueError, match="feature|namespace"):
+        AdaptivePolicySelector(utility_estimates={key: 1.0})
+
+
+def test_sources_and_arbitrary_metadata_never_reach_callbacks_or_factors():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    candidate_id = inputs.candidate_context[0].context_item_id
+    poisoned = tuple(
+        replace(
+            item,
+            source="source-with-{}".format(candidate_id),
+            provenance="provenance-with-{}".format(candidate_id),
+            metadata=dict(item.metadata, arbitrary="private:{}".format(candidate_id)),
+        )
+        for item in inputs.candidate_context
+    )
+    seen = []
+    selector = AdaptivePolicySelector(
+        utility_estimates=lambda feature: seen.append(feature) or 0.0
+    )
+    result = selector.select(replace(inputs, candidate_context=poisoned))
+
+    assert seen
+    assert all(
+        "source" not in feature and candidate_id not in feature for feature in seen
+    )
+    for decision in result.decisions:
+        assert all(
+            "source" not in key and "arbitrary" not in key and candidate_id not in key
+            for key in decision.score_factors
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ["learning_attributes", "control_attributes", "format"]
+)
+@pytest.mark.parametrize("unsafe_kind", ["candidate_id", "evaluation_label"])
+def test_unsafe_approved_metadata_values_are_explicitly_rejected(field, unsafe_kind):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    item = inputs.candidate_context[0]
+    unsafe = (
+        "signal:contains-{}".format(item.context_item_id)
+        if unsafe_kind == "candidate_id"
+        else "signal:gold-required-label"
+    )
+    if field == "format":
+        unsafe = unsafe.replace("signal:", "format:")
+    value = unsafe if field == "format" else (unsafe,)
+    poisoned = replace(item, metadata=dict(item.metadata, **{field: value}))
+    seen = []
+    result = AdaptivePolicySelector(
+        utility_estimates=lambda feature: seen.append(feature) or 0.0
+    ).select(replace(inputs, candidate_context=(poisoned,)))
+
+    assert result.decisions[0].reason == "processing_error"
+    assert unsafe not in seen
+    assert unsafe not in repr(result.decisions[0].score_factors)
+
+
+def test_stateful_callback_is_snapshotted_once_per_unique_shared_feature():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    metadata = {
+        "learning_attributes": ("signal:shared",),
+        "format": "format:note",
+    }
+    candidates = tuple(
+        replace(item, metadata=metadata) for item in inputs.candidate_context[:2]
+    )
+    constrained = replace(inputs, candidate_context=candidates, token_budget=10_000)
+    calls = []
+
+    def monotonically_stateful(feature):
+        calls.append(feature)
+        return float(len(calls))
+
+    selector = AdaptivePolicySelector(
+        utility_estimates=monotonically_stateful,
+        feature_weights={},
+        relevance_weight=0.0,
+        importance_weight=1.0,
+    )
+    first = selector.select(constrained)
+    first_call_count = len(calls)
+    second = selector.select(constrained)
+
+    assert first == second
+    assert first_call_count == len(set(calls)) == 3
+    assert len(calls) == first_call_count
+    assert (
+        len(
+            {
+                decision.score_factors["policy.adaptive.feature_utility.signal:shared"]
+                for decision in first.decisions
+            }
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("nonfinite", [False, True])
+def test_callback_failure_is_cached_once_and_repeats_deterministically(nonfinite):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    item = replace(
+        inputs.candidate_context[0],
+        metadata={"learning_attributes": ("signal:failing",)},
+    )
+    constrained = replace(inputs, candidate_context=(item,))
+    calls = []
+
+    def callback(feature):
+        calls.append(feature)
+        if feature != "signal:failing":
+            return 0.0
+        if nonfinite:
+            return float("nan")
+        raise RuntimeError("backend detail")
+
+    selector = AdaptivePolicySelector(utility_estimates=callback)
+    first = selector.select(constrained)
+    second = selector.select(constrained)
+
+    assert first == second
+    assert calls.count("signal:failing") == 1
+    assert first.decisions[0].reason == "processing_error"
+    assert "backend detail" not in repr(first)
+
+
+def test_raw_scores_are_logistically_normalized_and_trace_pipeline_math():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    features_and_weights = (
+        ("group:above-one-a", 2.0),
+        ("group:above-one-b", 3.0),
+        ("group:below-zero", -1.0),
+    )
+    candidates = tuple(
+        replace(
+            inputs.candidate_context[index],
+            confidence=0.5,
+            metadata={"learning_attributes": (feature,)},
+        )
+        for index, (feature, _weight) in enumerate(features_and_weights)
+    )
+    selector = StaticPolicySelector(
+        feature_weights=dict(features_and_weights),
+        relevance_weight=0.0,
+        importance_weight=1.0,
+    )
+    result = selector.select(
+        replace(
+            inputs,
+            task_prompt="terms absent everywhere",
+            candidate_context=candidates,
+            token_budget=10_000,
+        )
+    )
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidates[1].context_item_id,
+        candidates[0].context_item_id,
+        candidates[2].context_item_id,
+    ]
+    by_id = {decision.context_item_id: decision for decision in result.decisions}
+    for candidate, (_feature, raw_score) in zip(candidates, features_and_weights):
+        decision = by_id[candidate.context_item_id]
+        factors = decision.score_factors
+        assert factors["policy.static.raw_score"] == raw_score
+        assert factors["policy.raw_score"] == raw_score
+        assert factors["policy.normalization_method"] == "logistic"
+        assert 0.0 < factors["policy.effective_importance"] < 1.0
+        assert factors["retrieval.importance"] == factors["policy.effective_importance"]
+        assert (
+            factors["retrieval.weighted_importance"]
+            == factors["policy.effective_importance"]
+        )
+        assert factors["retrieval.final_score"] == decision.score
+        assert decision.score == factors["policy.effective_importance"]
+        assert "static.score" not in factors
+
+
+def test_negative_adaptive_utility_trace_separates_raw_and_effective_scores():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    feature = inputs.candidate_context[0].metadata["learning_attributes"][0]
+    result = AdaptivePolicySelector(
+        utility_estimates={feature: -2.0},
+        learning_weight=0.5,
+        feature_weights={},
+        relevance_weight=0.0,
+        importance_weight=1.0,
+    ).select(replace(inputs, token_budget=10_000))
+    decision = result.decisions[0]
+    factors = decision.score_factors
+
+    assert factors["policy.adaptive.raw_utility"] < 0.0
+    assert factors["policy.adaptive.weighted_utility_contribution"] < 0.0
+    assert factors["policy.adaptive.raw_score"] == factors["policy.raw_score"]
+    assert factors["policy.raw_score"] < 0.0
+    assert factors["retrieval.importance"] == factors["policy.effective_importance"]
+    assert factors["retrieval.final_score"] == decision.score
 
 
 def test_static_configuration_is_frozen_and_has_no_fixture_specific_defaults():
