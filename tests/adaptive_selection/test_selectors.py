@@ -546,6 +546,83 @@ def test_punctuation_obfuscated_labels_are_rejected_in_policy_mappings(label):
         AdaptivePolicySelector(utility_estimates={feature: 1.0})
 
 
+@pytest.mark.parametrize(
+    "candidate_id,obfuscated_value",
+    [
+        ("abc123", "a-b-c-1-2-3"),
+        ("ABC123", "a_b-c_1-2-3"),
+        ("Ab.C-123", "abc-1_2-3"),
+    ],
+)
+@pytest.mark.parametrize(
+    "field", ["learning_attributes", "control_attributes", "format"]
+)
+@pytest.mark.parametrize(
+    "policy_kind", ["static_weight", "utility_mapping", "callback"]
+)
+def test_punctuation_obfuscated_candidate_ids_cannot_reach_policy_or_selection(
+    policy_kind, field, candidate_id, obfuscated_value
+):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    namespace = "format" if field == "format" else "signal"
+    feature = "{}:{}".format(namespace, obfuscated_value)
+    safe_feature = "{}:neutral".format(namespace)
+    wrap = (lambda value: value) if field == "format" else (lambda value: (value,))
+    safe = replace(
+        inputs.candidate_context[0],
+        context_item_id="safe999",
+        token_count=1,
+        metadata={field: wrap(safe_feature)},
+    )
+    target = replace(
+        inputs.candidate_context[1],
+        context_item_id=candidate_id,
+        token_count=1,
+        metadata={field: wrap(feature)},
+    )
+    constrained = replace(
+        inputs,
+        task_prompt="terms absent from both candidates",
+        candidate_context=(safe, target),
+        token_budget=1,
+    )
+    seen = []
+
+    if policy_kind == "static_weight":
+        selector = StaticPolicySelector(
+            feature_weights={feature: 100.0},
+            relevance_weight=0.0,
+            importance_weight=1.0,
+        )
+    elif policy_kind == "utility_mapping":
+        selector = AdaptivePolicySelector(
+            utility_estimates={feature: 100.0},
+            feature_weights={},
+            relevance_weight=0.0,
+            importance_weight=1.0,
+        )
+    else:
+        selector = AdaptivePolicySelector(
+            utility_estimates=lambda name: seen.append(name) or 100.0,
+            feature_weights={},
+            relevance_weight=0.0,
+            importance_weight=1.0,
+        )
+
+    result = selector.select(constrained)
+
+    _assert_complete_exact_result(result, constrained)
+    assert tuple(item.context_item_id for item in result.selected_items) == ("safe999",)
+    target_decision = next(
+        decision
+        for decision in result.decisions
+        if decision.context_item_id == candidate_id
+    )
+    assert target_decision.reason == "processing_error"
+    assert feature not in repr(target_decision.score_factors)
+    assert feature not in seen
+
+
 def test_stateful_callback_is_snapshotted_once_per_unique_shared_feature():
     inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
     metadata = {

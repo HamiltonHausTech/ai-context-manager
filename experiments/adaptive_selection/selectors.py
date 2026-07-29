@@ -127,7 +127,14 @@ def _validate_feature_name(
         raise ValueError(
             "{} uses an unapproved reusable-feature namespace".format(name)
         )
-    if any(candidate_id.casefold() in normalized for candidate_id in candidate_ids):
+    collapsed_candidate_ids = (
+        re.sub(r"[^a-z0-9]+", "", candidate_id.casefold())
+        for candidate_id in candidate_ids
+    )
+    if any(
+        candidate_id and candidate_id in screening_text
+        for candidate_id in collapsed_candidate_ids
+    ):
         raise ValueError("{} contains a candidate ID".format(name))
     return feature
 
