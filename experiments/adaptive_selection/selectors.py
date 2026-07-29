@@ -56,7 +56,7 @@ def _freeze_weights(values: Optional[Mapping[str, float]]) -> Mapping[str, float
     return MappingProxyType({key: frozen[key] for key in sorted(frozen)})
 
 
-_FEATURE_RE = re.compile(r"^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9._/-]*$")
+_FEATURE_RE = re.compile(r"^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*$")
 _RESERVED_FEATURE_TERMS = frozenset(
     {
         "adaptation",
@@ -69,6 +69,9 @@ _RESERVED_FEATURE_TERMS = frozenset(
         "required",
         "useful",
     }
+)
+_FORBIDDEN_IDENTITY_TERMS = frozenset(
+    {"candidate", "contextitemid", "metadata", "provenance", "secret", "source"}
 )
 _APPROVED_METADATA_FIELDS = (
     "control_attributes",
@@ -114,6 +117,10 @@ def _validate_feature_name(
     screening_text = re.sub(r"[^a-z0-9]+", "", normalized)
     if any(term in screening_text for term in _RESERVED_FEATURE_TERMS):
         raise ValueError("{} contains reserved evaluation vocabulary".format(name))
+    if any(term in screening_text for term in _FORBIDDEN_IDENTITY_TERMS) or re.search(
+        r"(?:^|[^a-z0-9])i[^a-z0-9]*d(?:$|[^a-z0-9])", normalized
+    ):
+        raise ValueError("{} contains forbidden identity vocabulary".format(name))
     if not _FEATURE_RE.fullmatch(feature):
         raise ValueError("{} must be a safe namespaced feature".format(name))
     if normalized.split(":", 1)[0] not in _APPROVED_FEATURE_NAMESPACES:
@@ -161,33 +168,25 @@ def _visible_features(
 
 
 def _normalize_pool_scores(raw_scores: Sequence[float]) -> Tuple[float, ...]:
-    """Min-max normalize a complete finite candidate pool without overflow.
+    """Dense-rank a complete finite candidate pool onto ``[0, 1]``.
 
-    Scaling all values before subtraction avoids overflow for mixed-sign extrema.
-    Equal pools map to the documented neutral importance ``0.5``; stable sorting in the
-    retrieval pipeline then preserves candidate order.
+    Ordinal normalization intentionally preserves ordering rather than score magnitude:
+    equal raw scores receive equal importance and distinct raw scores receive strictly
+    increasing representable values, even when finite extrema erase min-max differences.
+    A single unique value maps to neutral ``0.5``; stable retrieval sorting preserves
+    candidate order for ties.
     """
 
     if not raw_scores:
         return ()
-    raw_min = min(raw_scores)
-    raw_max = max(raw_scores)
-    if raw_min == raw_max:
+    unique_scores = sorted(set(raw_scores))
+    if len(unique_scores) == 1:
         return tuple(0.5 for _score in raw_scores)
-    scale = max(abs(raw_min), abs(raw_max))
-    scaled_min = raw_min / scale
-    scaled_max = raw_max / scale
-    span = scaled_max - scaled_min
-    normalized = []
-    for raw_score in raw_scores:
-        if raw_score == raw_min:
-            value = 0.0
-        elif raw_score == raw_max:
-            value = 1.0
-        else:
-            value = ((raw_score / scale) - scaled_min) / span
-        normalized.append(max(0.0, min(1.0, value)))
-    return tuple(normalized)
+    denominator = len(unique_scores) - 1
+    importance_by_score = {
+        raw_score: rank / denominator for rank, raw_score in enumerate(unique_scores)
+    }
+    return tuple(importance_by_score[raw_score] for raw_score in raw_scores)
 
 
 class _ContextItemComponent(ContextComponent):
@@ -438,11 +437,28 @@ class StaticPolicySelector(_BaseSelector):
         candidate_ids: Sequence[str],
     ) -> Sequence[tuple]:
         details: Dict[int, Tuple[float, Dict[str, ScoreValue]]] = {}
-        rankable = []
+        validated = []
         for component in eligible:
             try:
                 if not isinstance(component, _ContextItemComponent):
                     raise TypeError("unexpected component type")
+                _visible_features(component.item, candidate_ids)
+                validated.append(component)
+            except Exception:
+                initial.append(
+                    RetrievalDecision(
+                        component.id,
+                        component.__class__.__name__,
+                        False,
+                        "processing_error",
+                        0.0,
+                        None,
+                        {},
+                    )
+                )
+        rankable = []
+        for component in validated:
+            try:
                 details[id(component)] = self._score_details(
                     component.item, candidate_ids
                 )
@@ -469,7 +485,7 @@ class StaticPolicySelector(_BaseSelector):
         }
         for component in rankable:
             factors = details[id(component)][1]
-            factors["policy.normalization_method"] = "candidate_pool_min_max"
+            factors["policy.normalization_method"] = "candidate_pool_dense_rank"
             factors["policy.pool_raw_min"] = pool_min
             factors["policy.pool_raw_max"] = pool_max
             factors["policy.effective_importance"] = normalized_by_component[

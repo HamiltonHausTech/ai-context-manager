@@ -1,5 +1,6 @@
 import inspect
 import math
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -304,6 +305,53 @@ def test_policy_mappings_reject_non_reusable_feature_keys(key):
         AdaptivePolicySelector(utility_estimates={key: 1.0})
 
 
+FORBIDDEN_APPROVED_NAMESPACE_ALIASES = (
+    "signal:source/private",
+    "signal:metadata.source",
+    "signal:provenance/private",
+    "signal:id/private",
+    "signal:secret/private",
+    "signal:candidate/private",
+    "signal:source_private",
+    "signal:meta-data",
+    "signal:provenance-private",
+    "signal:id_private",
+    "signal:se-cret",
+    "signal:CAN-DI-DATE",
+    "signal:context_item_id",
+    "signal:Context-Item-ID",
+)
+
+
+@pytest.mark.parametrize("feature", FORBIDDEN_APPROVED_NAMESPACE_ALIASES)
+def test_forbidden_aliases_are_rejected_in_static_and_utility_mappings(feature):
+    with pytest.raises(ValueError, match="feature|identity"):
+        StaticPolicySelector(feature_weights={feature: 1.0})
+    with pytest.raises(ValueError, match="feature|identity"):
+        AdaptivePolicySelector(utility_estimates={feature: 1.0})
+
+
+@pytest.mark.parametrize("feature", FORBIDDEN_APPROVED_NAMESPACE_ALIASES)
+@pytest.mark.parametrize(
+    "field", ["learning_attributes", "control_attributes", "format"]
+)
+def test_forbidden_aliases_in_approved_metadata_never_reach_callback(field, feature):
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    if field == "format":
+        feature = feature.replace("signal:", "format:", 1)
+    value = feature if field == "format" else (feature,)
+    item = replace(inputs.candidate_context[0], metadata={field: value})
+    seen = []
+
+    result = AdaptivePolicySelector(
+        utility_estimates=lambda name: seen.append(name) or 1.0
+    ).select(replace(inputs, candidate_context=(item,)))
+
+    assert seen == []
+    assert result.decisions[0].reason == "processing_error"
+    assert feature not in repr(result.decisions[0].score_factors)
+
+
 @pytest.mark.parametrize(
     "namespace",
     [
@@ -606,7 +654,7 @@ def test_raw_scores_are_pool_normalized_and_trace_pipeline_math():
         factors = decision.score_factors
         assert factors["policy.static.raw_score"] == raw_score
         assert factors["policy.raw_score"] == raw_score
-        assert factors["policy.normalization_method"] == "candidate_pool_min_max"
+        assert factors["policy.normalization_method"] == "candidate_pool_dense_rank"
         assert factors["policy.pool_raw_min"] == -1.0
         assert factors["policy.pool_raw_max"] == 3.0
         assert 0.0 <= factors["policy.effective_importance"] <= 1.0
@@ -713,6 +761,39 @@ def test_pool_normalization_is_overflow_safe_for_extreme_mixed_sign_scores():
         math.isfinite(float(decision.score_factors["policy.effective_importance"]))
         for decision in result.decisions
     )
+
+
+def test_dense_rank_preserves_middle_order_between_mixed_sign_extrema():
+    inputs = load_tiny_fixture(FIXTURE).cases[0].inputs
+    features_and_weights = (
+        ("signal:middle-high", 101.0),
+        ("signal:extreme-negative", -sys.float_info.max),
+        ("signal:extreme-positive", sys.float_info.max),
+        ("signal:middle-low", 100.0),
+    )
+    candidates, result = _importance_only_result(inputs, features_and_weights)
+
+    assert [item.context_item_id for item in result.selected_items] == [
+        candidates[2].context_item_id,
+        candidates[0].context_item_id,
+        candidates[3].context_item_id,
+        candidates[1].context_item_id,
+    ]
+    by_id = {decision.context_item_id: decision for decision in result.decisions}
+    effective = []
+    for candidate, (_feature, raw_score) in zip(candidates, features_and_weights):
+        decision = by_id[candidate.context_item_id]
+        factors = decision.score_factors
+        assert factors["policy.raw_score"] == raw_score
+        assert factors["policy.pool_raw_min"] == -sys.float_info.max
+        assert factors["policy.pool_raw_max"] == sys.float_info.max
+        assert factors["policy.normalization_method"] == "candidate_pool_dense_rank"
+        assert factors["retrieval.importance"] == factors["policy.effective_importance"]
+        assert factors["retrieval.final_score"] == decision.score
+        assert math.isfinite(decision.score)
+        effective.append((raw_score, factors["policy.effective_importance"]))
+    ordered = sorted(effective)
+    assert all(lower[1] < upper[1] for lower, upper in zip(ordered, ordered[1:]))
 
 
 def test_negative_adaptive_utility_trace_separates_raw_and_effective_scores():
