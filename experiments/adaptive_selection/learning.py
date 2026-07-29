@@ -263,13 +263,20 @@ class IDLocalUtilityEstimate:
         }
 
 
-@dataclass(frozen=True)
+_LEARNING_SNAPSHOT_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
 class LearningSnapshot:
     """One immutable result for an exact caller-ordered reveal prefix.
 
     The outer mapping key is always ``task_family_id``. Inner feature mappings are the
     only mappings intended for ``AdaptivePolicySelector``. ID-local mappings remain a
     separate ablation and can never enter the selector through this API accidentally.
+
+    Snapshots have no public construction path. ``learn_utilities`` is the trusted
+    derivation boundary because validating an arbitrary snapshot without its candidate
+    context and reward evidence would necessarily be incomplete.
     """
 
     policy: LearningPolicy
@@ -278,7 +285,37 @@ class LearningSnapshot:
     feature_utilities: Mapping[str, Mapping[str, float]]
     id_local_utilities: Mapping[str, Mapping[str, float]]
 
-    def __post_init__(self) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError(
+            "LearningSnapshot instances are created only by learn_utilities"
+        )
+
+    @classmethod
+    def _from_learning(
+        cls,
+        token: object,
+        *,
+        policy: LearningPolicy,
+        feature_estimates: Tuple[UtilityEstimate, ...],
+        id_local_estimates: Tuple[IDLocalUtilityEstimate, ...],
+        feature_utilities: Mapping[str, Mapping[str, float]],
+        id_local_utilities: Mapping[str, Mapping[str, float]],
+        estimated_timestamp: Any,
+    ) -> "LearningSnapshot":
+        if token is not _LEARNING_SNAPSHOT_TOKEN:
+            raise TypeError(
+                "LearningSnapshot instances are created only by learn_utilities"
+            )
+        snapshot = object.__new__(cls)
+        object.__setattr__(snapshot, "policy", policy)
+        object.__setattr__(snapshot, "feature_estimates", feature_estimates)
+        object.__setattr__(snapshot, "id_local_estimates", id_local_estimates)
+        object.__setattr__(snapshot, "feature_utilities", feature_utilities)
+        object.__setattr__(snapshot, "id_local_utilities", id_local_utilities)
+        snapshot._validate(estimated_timestamp)
+        return snapshot
+
+    def _validate(self, estimated_timestamp: Any) -> None:
         if not isinstance(self.policy, LearningPolicy):
             raise TypeError("policy must be a LearningPolicy")
         feature_estimates = tuple(self.feature_estimates)
@@ -297,6 +334,19 @@ class LearningSnapshot:
             raise ValueError(
                 "ID-local estimates and utilities must be empty when disabled"
             )
+        all_estimates = feature_estimates + id_local_estimates
+        if all_estimates:
+            if not isinstance(estimated_timestamp, str):
+                raise ValueError("nonempty snapshots require one learning timestamp")
+            if any(
+                estimate.estimated_timestamp != estimated_timestamp
+                for estimate in all_estimates
+            ):
+                raise ValueError(
+                    "all snapshot estimates must share the injected learning timestamp"
+                )
+        elif estimated_timestamp is not None:
+            raise ValueError("empty snapshots must not consume a learning timestamp")
         feature_targets: Dict[Tuple[str, str], UtilityEstimate] = {}
         expected_provenance = "learning:{}".format(
             self.policy.credit_assignment_version
@@ -329,6 +379,13 @@ class LearningSnapshot:
                 self.policy,
                 expected_provenance,
             )
+            expected_confidence = len(estimate.source_event_ids) / (
+                self.policy.prior_strength + len(estimate.source_event_ids)
+            )
+            if estimate.confidence != expected_confidence:
+                raise ValueError(
+                    "feature estimate confidence does not match evidence count"
+                )
             target = (estimate.task_family_id, feature)
             if target in feature_targets:
                 raise ValueError("duplicate feature estimate target")
@@ -368,6 +425,13 @@ class LearningSnapshot:
                 self.policy,
                 expected_provenance,
             )
+            expected_confidence = len(estimate.source_event_ids) / (
+                self.policy.prior_strength + len(estimate.source_event_ids)
+            )
+            if estimate.confidence != expected_confidence:
+                raise ValueError(
+                    "ID-local estimate confidence does not match evidence count"
+                )
             target = (estimate.task_family_id, estimate.context_item_id)
             if target in id_targets:
                 raise ValueError("duplicate ID-local estimate target")
@@ -574,14 +638,27 @@ def learn_utilities(
     if not callable(clock):
         raise TypeError("clock must be callable")
     try:
-        copied_events = tuple(events)
+        supplied_events = tuple(events)
     except TypeError:
         raise TypeError("events must be a sequence of FeedbackEvent records")
-    if any(not isinstance(event, FeedbackEvent) for event in copied_events):
+    if any(not isinstance(event, FeedbackEvent) for event in supplied_events):
         raise TypeError("events must contain FeedbackEvent records")
-    copied_inputs = dict(inputs_by_task_case_id)
-    if any(not isinstance(value, TaskInputs) for value in copied_inputs.values()):
+    supplied_inputs = dict(inputs_by_task_case_id)
+    if any(not isinstance(value, TaskInputs) for value in supplied_inputs.values()):
         raise TypeError("inputs_by_task_case_id must contain TaskInputs records")
+
+    # Frozen records can still be altered through object.__setattr__. Round-trip every
+    # caller record through its canonical schema boundary before assigning credit. This
+    # preserves event order, does not mutate caller objects, and yields only the two
+    # explicitly accepted public record types.
+    copied_events = tuple(
+        FeedbackEvent.from_dict(FeedbackEvent.to_dict(event))
+        for event in supplied_events
+    )
+    copied_inputs = {
+        task_case_id: TaskInputs.from_dict(TaskInputs.to_dict(value))
+        for task_case_id, value in supplied_inputs.items()
+    }
     event_ids = tuple(event.event_id for event in copied_events)
     if len(set(event_ids)) != len(event_ids):
         raise ValueError("feedback event IDs must be unique")
@@ -621,7 +698,15 @@ def learn_utilities(
             evidence.source_event_ids.append(event.event_id)
 
     if not feature_evidence and not id_evidence:
-        return LearningSnapshot(policy, (), (), {}, {})
+        return LearningSnapshot._from_learning(
+            _LEARNING_SNAPSHOT_TOKEN,
+            policy=policy,
+            feature_estimates=(),
+            id_local_estimates=(),
+            feature_utilities={},
+            id_local_utilities={},
+            estimated_timestamp=None,
+        )
 
     estimated_timestamp = clock()
     feature_estimates = []
@@ -669,12 +754,14 @@ def learn_utilities(
         if len(source_ids) >= policy.minimum_evidence_count:
             id_local_utilities[family][context_item_id] = utility
 
-    return LearningSnapshot(
+    return LearningSnapshot._from_learning(
+        _LEARNING_SNAPSHOT_TOKEN,
         policy=policy,
         feature_estimates=tuple(feature_estimates),
         id_local_estimates=tuple(id_local_estimates),
         feature_utilities=feature_utilities,
         id_local_utilities=id_local_utilities,
+        estimated_timestamp=estimated_timestamp,
     )
 
 

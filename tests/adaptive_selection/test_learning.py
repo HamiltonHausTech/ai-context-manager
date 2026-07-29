@@ -340,6 +340,44 @@ def test_renaming_adaptation_ids_preserves_feature_estimates_and_changes_only_id
     }
 
 
+def test_semantic_candidate_id_collision_remains_intentionally_invalid():
+    """ID renaming is invariant only for opaque IDs outside the feature vocabulary."""
+
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    old_id = event.affected_context_item_ids[0]
+    collision = "observed"
+    case_inputs = inputs[event.task_case_id]
+    collided_inputs = dict(inputs)
+    collided_inputs[event.task_case_id] = replace(
+        case_inputs,
+        candidate_context=tuple(
+            (
+                replace(item, context_item_id=collision)
+                if item.context_item_id == old_id
+                else item
+            )
+            for item in case_inputs.candidate_context
+        ),
+    )
+    payload = dict(event.structured_value)
+    for key in ("useful_context_item_ids", "harmful_context_item_ids"):
+        payload[key] = tuple(
+            collision if value == old_id else value for value in payload[key]
+        )
+    collided_event = replace(
+        event,
+        affected_context_item_ids=tuple(
+            collision if value == old_id else value
+            for value in event.affected_context_item_ids
+        ),
+        structured_value=payload,
+    )
+
+    with pytest.raises(ValueError, match="candidate ID"):
+        _learn(events=(collided_event,), inputs=collided_inputs)
+
+
 def test_exact_reveal_prefix_and_caller_order_drive_provenance():
     bundle, _ = _bundle_parts()
     events = bundle.adaptation_feedback[:2]
@@ -459,163 +497,84 @@ def test_same_inputs_policy_and_clock_are_byte_equivalent():
     ) == json.dumps(second.to_dict(), sort_keys=True, separators=(",", ":"))
 
 
-def test_valid_learned_snapshot_can_be_reconstructed_without_serialization_changes():
+def test_learning_snapshot_rejects_all_public_construction():
     snapshot = _learn()
-    reconstructed = LearningSnapshot(
-        policy=snapshot.policy,
-        feature_estimates=snapshot.feature_estimates,
-        id_local_estimates=snapshot.id_local_estimates,
-        feature_utilities=snapshot.feature_utilities,
-        id_local_utilities=snapshot.id_local_utilities,
-    )
-    assert reconstructed.to_dict() == snapshot.to_dict()
-
-
-def _snapshot_changes(snapshot, **changes):
-    values = {
+    forged_fields = {
         "policy": snapshot.policy,
         "feature_estimates": snapshot.feature_estimates,
         "id_local_estimates": snapshot.id_local_estimates,
         "feature_utilities": snapshot.feature_utilities,
         "id_local_utilities": snapshot.id_local_utilities,
     }
-    values.update(changes)
-    return LearningSnapshot(**values)
 
-
-@pytest.mark.parametrize("value", [True, float("inf"), -1.01, 1.01])
-def test_snapshot_rejects_non_real_or_unbounded_active_values(value):
-    snapshot = _learn()
-    family = next(iter(snapshot.feature_utilities))
-    utilities = {
-        outer_family: dict(family_values)
-        for outer_family, family_values in snapshot.feature_utilities.items()
-    }
-    feature = next(iter(utilities[family]))
-    utilities[family][feature] = value
-    with pytest.raises(ValueError, match="feature_utilities"):
-        _snapshot_changes(snapshot, feature_utilities=utilities)
-
-
-def test_snapshot_rejects_active_map_without_estimates():
-    with pytest.raises(ValueError, match="correspond exactly"):
-        LearningSnapshot(
-            policy=LearningPolicy(),
-            feature_estimates=(),
-            id_local_estimates=(),
-            feature_utilities={"family": {"basis:observed": 0.5}},
-            id_local_utilities={},
+    with pytest.raises(TypeError, match="learn_utilities"):
+        LearningSnapshot()
+    with pytest.raises(TypeError, match="learn_utilities"):
+        LearningSnapshot(**forged_fields)
+    with pytest.raises(TypeError, match="learn_utilities"):
+        LearningSnapshot._from_learning(
+            object(), estimated_timestamp=CLOCK(), **forged_fields
         )
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        {"context_attributes": ("tag:context_item_id-secret",)},
-        {"context_attributes": ()},
-        {"context_attributes": ("basis:observed", "signal:path-correlation")},
-        {"context_attributes": ("not canonical",)},
-        {"task_family_id": "other-family"},
-        {"estimated_utility": -0.75},
-        {"estimator_version": "wrong-estimator"},
-        {"provenance": "learning:wrong-credit-policy"},
-        {"utility_estimate_id": "wrong-identity"},
-    ],
-)
-def test_snapshot_rejects_inconsistent_feature_estimate_artifacts(change):
-    snapshot = _learn()
-    estimate = next(
+    active = next(
         item
         for item in snapshot.feature_estimates
         if len(item.source_event_ids) >= snapshot.policy.minimum_evidence_count
     )
-    if change == {"context_attributes": ()}:
-        altered = replace(estimate)
-        object.__setattr__(altered, "context_attributes", ())
-    else:
-        altered = replace(estimate, **change)
-    estimates = tuple(
-        altered if item is estimate else item for item in snapshot.feature_estimates
-    )
-    with pytest.raises(ValueError):
-        _snapshot_changes(snapshot, feature_estimates=estimates)
-
-
-def test_snapshot_rejects_provisional_estimate_in_active_map_and_duplicate_targets():
-    snapshot = _learn()
-    provisional = next(
-        item
-        for item in snapshot.feature_estimates
-        if len(item.source_event_ids) < snapshot.policy.minimum_evidence_count
-    )
-    family = provisional.task_family_id
-    feature = provisional.context_attributes[0]
-    utilities = {
-        outer_family: dict(family_values)
-        for outer_family, family_values in snapshot.feature_utilities.items()
-    }
-    utilities.setdefault(family, {})[feature] = provisional.estimated_utility
-    with pytest.raises(ValueError, match="correspond exactly"):
-        _snapshot_changes(snapshot, feature_utilities=utilities)
-    with pytest.raises(ValueError, match="duplicate"):
-        _snapshot_changes(
-            snapshot,
-            feature_estimates=snapshot.feature_estimates
-            + (snapshot.feature_estimates[0],),
-        )
-
-
-@pytest.mark.parametrize("value", [True, float("inf"), -1.01, 1.01])
-def test_snapshot_revalidates_tampered_estimate_values(value):
-    snapshot = _learn()
-    estimate = replace(snapshot.feature_estimates[0])
-    object.__setattr__(estimate, "estimated_utility", value)
-    estimates = (estimate,) + snapshot.feature_estimates[1:]
-    with pytest.raises(ValueError, match="estimated_utility"):
-        _snapshot_changes(snapshot, feature_estimates=estimates)
-
-
-def test_snapshot_enforces_exact_id_map_correspondence_and_unique_targets():
-    snapshot = _learn()
-    provisional = snapshot.id_local_estimates[0]
-    with pytest.raises(ValueError, match="correspond exactly"):
-        _snapshot_changes(
-            snapshot,
-            id_local_utilities={
-                provisional.task_family_id: {
-                    provisional.context_item_id: provisional.estimated_utility
-                }
-            },
-        )
-    with pytest.raises(ValueError, match="duplicate"):
-        _snapshot_changes(
-            snapshot,
-            id_local_estimates=snapshot.id_local_estimates
-            + (snapshot.id_local_estimates[0],),
-        )
-
-
-def test_snapshot_rejects_id_artifacts_and_maps_when_id_learning_is_disabled():
-    enabled = _learn()
-    disabled_policy = LearningPolicy(id_local_enabled=False)
-    with pytest.raises(ValueError, match="disabled"):
+    for forged_estimate in (
+        replace(active, confidence=0.0),
+        replace(active, estimated_timestamp="2026-07-30T10:00:00Z"),
+        replace(active, estimated_utility=-active.estimated_utility),
+    ):
+        with pytest.raises(TypeError, match="learn_utilities"):
+            LearningSnapshot(
+                **dict(
+                    forged_fields,
+                    feature_estimates=(forged_estimate,),
+                    feature_utilities={
+                        forged_estimate.task_family_id: {
+                            forged_estimate.context_attributes[0]: (
+                                forged_estimate.estimated_utility
+                            )
+                        }
+                    },
+                )
+            )
+    with pytest.raises(TypeError, match="learn_utilities"):
         LearningSnapshot(
-            policy=disabled_policy,
-            feature_estimates=(),
-            id_local_estimates=enabled.id_local_estimates[:1],
-            feature_utilities={},
-            id_local_utilities={},
+            **dict(
+                forged_fields,
+                feature_utilities={"family": {"basis:observed": 0.5}},
+            )
         )
-    family = enabled.id_local_estimates[0].task_family_id
-    context_id = enabled.id_local_estimates[0].context_item_id
-    with pytest.raises(ValueError, match="disabled"):
-        LearningSnapshot(
-            policy=disabled_policy,
-            feature_estimates=(),
-            id_local_estimates=(),
-            feature_utilities={},
-            id_local_utilities={family: {context_id: 0.25}},
-        )
+
+
+def test_learner_uses_one_clock_and_formula_correct_confidence():
+    calls = []
+
+    def clock():
+        calls.append(None)
+        return "2026-07-29T10:00:00Z"
+
+    snapshot = _learn(clock=clock)
+    estimates = snapshot.feature_estimates + snapshot.id_local_estimates
+
+    assert len(calls) == 1
+    assert {item.estimated_timestamp for item in estimates} == {"2026-07-29T10:00:00Z"}
+    for estimate in estimates:
+        count = len(estimate.source_event_ids)
+        assert estimate.confidence == count / (snapshot.policy.prior_strength + count)
+
+
+def test_estimate_identity_is_stable_when_only_clock_changes():
+    first = _learn(clock=lambda: "2026-07-29T10:00:00Z")
+    second = _learn(clock=lambda: "2026-07-30T10:00:00Z")
+
+    assert [item.utility_estimate_id for item in first.feature_estimates] == [
+        item.utility_estimate_id for item in second.feature_estimates
+    ]
+    assert [item.id_local_utility_estimate_id for item in first.id_local_estimates] == [
+        item.id_local_utility_estimate_id for item in second.id_local_estimates
+    ]
 
 
 def test_output_public_types_are_frozen_and_well_typed():
@@ -815,4 +774,45 @@ def test_learner_rejects_tampered_context_utility_with_correction_fields():
     object.__setattr__(event, "correction_category", "factual")
     object.__setattr__(event, "correction_text", "Injected correction metadata")
     with pytest.raises(ValueError, match="correction.*null"):
+        _learn(events=(event,), inputs=inputs)
+
+
+@pytest.mark.parametrize(
+    "affected",
+    [
+        lambda context_id: (context_id, context_id),
+        lambda context_id: ("",),
+        lambda context_id: (42,),
+    ],
+)
+def test_learner_completely_revalidates_tampered_affected_ids(affected):
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    object.__setattr__(
+        event,
+        "affected_context_item_ids",
+        affected(event.affected_context_item_ids[0]),
+    )
+
+    with pytest.raises(ValueError, match="affected_context_item_ids"):
+        _learn(events=(event,), inputs=inputs)
+
+
+@pytest.mark.parametrize("tamper", ["duplicate-candidates", "blank-family"])
+def test_learner_completely_revalidates_tampered_task_inputs(tamper):
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    task_inputs = inputs[event.task_case_id]
+    if tamper == "duplicate-candidates":
+        object.__setattr__(
+            task_inputs,
+            "candidate_context",
+            (task_inputs.candidate_context[0], task_inputs.candidate_context[0]),
+        )
+        match = "candidate context IDs must be unique"
+    else:
+        object.__setattr__(task_inputs.profile, "task_family_id", "")
+        match = "task_family_id must be nonempty"
+
+    with pytest.raises(ValueError, match=match):
         _learn(events=(event,), inputs=inputs)
