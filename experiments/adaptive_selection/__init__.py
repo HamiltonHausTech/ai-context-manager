@@ -2,6 +2,12 @@
 
 from .dataset import (
     DATASET_BUNDLE_VERSION,
+    TINY_CLAIM_LIMIT,
+    TINY_ONTOLOGY_CONFIG,
+    TINY_ONTOLOGY_CONFIG_HASH,
+    TINY_ONTOLOGY_DEFINITIONS,
+    TINY_ONTOLOGY_ID,
+    TINY_ONTOLOGY_VERSION,
     DatasetBundle,
     FamilyPlan,
     canonical_bundle_sha256,
@@ -43,6 +49,12 @@ from .schema import (
 
 __all__ = [
     "DATASET_BUNDLE_VERSION",
+    "TINY_CLAIM_LIMIT",
+    "TINY_ONTOLOGY_CONFIG",
+    "TINY_ONTOLOGY_CONFIG_HASH",
+    "TINY_ONTOLOGY_DEFINITIONS",
+    "TINY_ONTOLOGY_ID",
+    "TINY_ONTOLOGY_VERSION",
     "DatasetBundle",
     "FamilyPlan",
     "canonical_bundle_sha256",

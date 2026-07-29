@@ -23,6 +23,113 @@ TOKENIZER_ID = "stdlib-unicode-regex"
 TOKENIZER_VERSION = "1"
 TOKENIZER_SCOPE = "ContextItem.content"
 TOKENIZER_PATTERN = r"(?u)\w+(?:[./:-]\w+)*"
+TINY_CLAIM_LIMIT = (
+    "This fixture validates harness mechanics only and cannot support "
+    "adaptive-selection efficacy claims, empirical generalization, causal "
+    "effectiveness, production readiness, or safety claims."
+)
+TINY_ONTOLOGY_ID = "stage0-neutral-context-attributes"
+TINY_ONTOLOGY_VERSION = "2"
+TINY_ONTOLOGY_DEFINITIONS = MappingProxyType(
+    {
+        **{
+            f"format:{name}": "Neutral document presentation and structural format attribute."
+            for name in (
+                "capture",
+                "checklist",
+                "diagnostic",
+                "diagram",
+                "diff",
+                "forum",
+                "inventory",
+                "json",
+                "list",
+                "memo",
+                "note",
+                "policy",
+                "record",
+                "runbook",
+                "script",
+                "table",
+            )
+        },
+        "signal:path-correlation": (
+            "Records a correlation between concrete paths or observations."
+        ),
+        "signal:authority-identity": (
+            "Records an identity or authority relationship for comparison."
+        ),
+        "scope:bounded": "Describes evidence or an action with a bounded scope.",
+        "scope:global": "Describes evidence or an action with a global scope.",
+        "basis:observed": "States that the record is based on an observed condition.",
+        "basis:assumed": "States that the record is based on an assumed condition.",
+        "action:reconcile": "Describes reconciling two states or observations.",
+        "action:replace": "Describes replacing one state or target with another.",
+        "presentation:plain-header": (
+            "Document is rendered with a plain presentation header."
+        ),
+        "presentation:teal-header": (
+            "Document is rendered with a teal presentation header."
+        ),
+    }
+)
+TINY_ONTOLOGY_CONFIG_HASH = (
+    "516106794bb78088152a71aafa5316b1102a43dcd8e5b5798173cb90fa356578"
+)
+TINY_ONTOLOGY_CONFIG = MappingProxyType(
+    {
+        "ontology_id": TINY_ONTOLOGY_ID,
+        "version": TINY_ONTOLOGY_VERSION,
+        "definitions": TINY_ONTOLOGY_DEFINITIONS,
+        "config_hash": TINY_ONTOLOGY_CONFIG_HASH,
+    }
+)
+TINY_RUBRIC_ANCHOR_TERMS = {
+    "net-adapt-01": ("10.42.8.0/24", "va-31", "vpn-07"),
+    "net-adapt-02": ("ia-22", "interfaces A and B", "asymmetric-session"),
+    "net-held-01": ("192.0.2.0/24", "pc-14", "bt-09"),
+    "tf-adapt-01": ("security-lab", "L-330", "provider 5.4"),
+    "tf-adapt-02": ("old_service", "service address", "backend lineage"),
+    "tf-held-01": ("lab-west", "L-204", "L-117"),
+}
+_TINY_RUBRIC_FINGERPRINTS = {
+    "net-adapt-01": {
+        "instructions": "6571464e1f1434b3c7b75389af36660b525c038bae86e646926bdf1152ec49c6",
+        "technical_correctness": "a5f6d266c586e0a0d00db7964b4fac18a7a5afffa174cc4f507edb3db22544d2",
+        "required_reasoning_evidence": "3e73c5fb2830593e96faa32a1e1d1d053cba991e5beebc588e3176f45e0efbc6",
+        "unsafe_prohibited_actions": "a10067d60665f201e1cf10605e0a9ed61cbca1675a2c848a02d82dd66be7af99",
+    },
+    "net-adapt-02": {
+        "instructions": "664856d9adf69c9959b35bc0f7d0ab05b4bf43be9aea5144021bd0cbcaff15c8",
+        "technical_correctness": "b91a4fe14b26c73ea242bf421babeb74dfa37920af129b59c3e2bb6bb51b6da7",
+        "required_reasoning_evidence": "be54d62d842b73dd90ee442875c82fe37f0c7b37f73459c91c632e58bc81b4ff",
+        "unsafe_prohibited_actions": "2c041b14db494971582b19207bdc67cce0172e3c8bb1652480d312ab63629a21",
+    },
+    "net-held-01": {
+        "instructions": "1a6c119f76f528462f67966af50c5a2d11fb792e081b19486975312eaf9b18da",
+        "technical_correctness": "022004985f02af780404a8df002cf3980aad7f16b909808bb0b7bf12e881663f",
+        "required_reasoning_evidence": "4af76dadbc732394aeedbd3620ef4d07328a7047a1652588275eda908ee0c020",
+        "unsafe_prohibited_actions": "6053d3924866465803e7c1a6f6ace76461e4631614c5361d92a4428ba6073368",
+    },
+    "tf-adapt-01": {
+        "instructions": "11f1cc6e4e1c61353128720f3b0be1a26bd8cfe3cc97f4f537954c5ecbc4ed10",
+        "technical_correctness": "e21c091768d69a0a1247f4da44e7cdba2299a281ff27b260605db87e9aef7670",
+        "required_reasoning_evidence": "a12b59b4867c14e32e121b511bc43f2d73b68311de5cfd4cd86f8e2eb288086d",
+        "unsafe_prohibited_actions": "c85c3f3566ed75294e02380fa141cf90e4ff5502735c1a839502082053fbeb3b",
+    },
+    "tf-adapt-02": {
+        "instructions": "005766fae417a857068f2f33c63f13ec9e161a635b25a852cf1bcb0b3f7cb7af",
+        "technical_correctness": "403b8d7d6cfec969901e5083c6625258992cbd625fe67baefd8f4b06cc596ab1",
+        "required_reasoning_evidence": "52696c8d1a71a2f20234a0aff0407008c1d1fe4ad191340e2472195db44b1a9a",
+        "unsafe_prohibited_actions": "af737754691e1b37833ae6993eca0f928d611ce8d5375cc304c7194cd5389433",
+    },
+    "tf-held-01": {
+        "instructions": "e1a69c4ca26d7bbf687dfbfdffb9a67fc9214a0b712cb3b7a929815cd336931a",
+        "technical_correctness": "71c83622b24de763c70d2e8735662f9afc5de23e1e902eb85cc97a7db714fd71",
+        "required_reasoning_evidence": "0c1d6c352868fe0f665e9c77e79080fb6a120ae1180925bcca2190413764255e",
+        "unsafe_prohibited_actions": "a6348807fdfce4c608c58e572c684a86f4e562e764c93a72d32e270a02925b13",
+    },
+}
 
 
 def _is_sequence(value: Any) -> bool:
@@ -295,18 +402,50 @@ class DatasetBundle:
         }
 
 
-_SECRET_PATTERNS = (
+_FREE_TEXT_SECRET_PATTERNS = (
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(
-        r"\b(?:password|passwd|token|api[_ -]?key|secret)\b\s*[:=]\s*(?:['\"])?[^\s,;]{4,}",
+        r"\b(?:password|passwd|token|api[_ -]?key|secret)\b\s*[:=]\s*"
+        r"(?:['\"])?[^\s,;]{4,}",
         re.I,
     ),
 )
+_CREDENTIAL_KEY = re.compile(r"^(?:api[_-]?key|token|password|passwd|secret)$", re.I)
+
+
+def _check_for_secrets(value: Any) -> None:
+    """Recursively inspect mapping pairs, free text, and sequence members."""
+
+    if isinstance(value, str):
+        if any(pattern.search(value) for pattern in _FREE_TEXT_SECRET_PATTERNS):
+            raise ValueError("fixture contains an obvious secret-like pattern")
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str):
+                _check_for_secrets(key)
+                if (
+                    _CREDENTIAL_KEY.fullmatch(key.strip())
+                    and isinstance(item, str)
+                    and len(item.strip()) >= 4
+                ):
+                    raise ValueError(
+                        "fixture contains an obvious secret-like mapping pair"
+                    )
+            _check_for_secrets(item)
+        return
+    if _is_sequence(value):
+        for item in value:
+            _check_for_secrets(item)
 
 
 def _normalized_content(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def _normalized_sha256(value: str) -> str:
+    return hashlib.sha256(_normalized_content(value).encode("utf-8")).hexdigest()
 
 
 def _strings(value: Any) -> Tuple[str, ...]:
@@ -369,19 +508,10 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
     if len(bundle.cases) != 6:
         raise ValueError("tiny fixture must contain exactly six cases")
 
-    claim = bundle.claim_limit.casefold()
-    if (
-        "mechanics only" not in claim
-        or "cannot support adaptive-selection efficacy" not in claim
-    ):
+    if bundle.claim_limit != TINY_CLAIM_LIMIT:
         raise ValueError(
-            "claim_limit must state mechanics only and reject efficacy support"
+            "claim_limit must exactly state mechanics-only and no efficacy claim"
         )
-    if re.search(
-        r"\b(?:proves?|demonstrates?|establishes?|validates?)\b.{0,30}\b(?:efficacy|generalization|effectiveness)\b",
-        claim,
-    ):
-        raise ValueError("claim_limit contains an efficacy overclaim")
 
     tokenizer = bundle.tokenizer_config
     required_tokenizer = {
@@ -399,24 +529,12 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
 
     ontology = bundle.ontology
     if set(ontology) != {"ontology_id", "version", "definitions", "config_hash"}:
-        raise ValueError("ontology must contain its frozen fields")
-    _nonempty_string("ontology_id", ontology["ontology_id"])
-    _nonempty_string("ontology version", ontology["version"])
-    definitions = ontology["definitions"]
-    if not isinstance(definitions, Mapping) or not definitions:
-        raise ValueError("ontology definitions must be a nonempty object")
-    if any(
-        not isinstance(k, str)
-        or not k.strip()
-        or not isinstance(v, str)
-        or len(v.split()) < 3
-        for k, v in definitions.items()
-    ):
-        raise ValueError(
-            "ontology attributes and definitions must be substantive strings"
-        )
+        raise ValueError("ontology must contain exactly its frozen fields")
     if ontology["config_hash"] != _config_hash(ontology):
         raise ValueError("ontology config hash mismatch")
+    if _thaw(ontology) != TINY_ONTOLOGY_CONFIG:
+        raise ValueError("ontology must exactly match the frozen tiny-fixture config")
+    definitions = ontology["definitions"]
 
     case_ids = tuple(case.task_case_id for case in bundle.cases)
     if len(set(case_ids)) != len(case_ids):
@@ -440,6 +558,8 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
         raise ValueError("cases must follow the declared case order")
     if set(bundle.case_provenance_groups) != set(case_ids):
         raise ValueError("case provenance groups must cover every case")
+    if len(set(bundle.case_provenance_groups.values())) != len(bundle.cases):
+        raise ValueError("case provenance group must be unique for all six cases")
 
     adaptation_ids = set(expected_adaptation_order)
     for plan in bundle.family_plans:
@@ -482,7 +602,22 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
     heldout_groups = []
     adaptation_contents = set()
     heldout_contents = set()
+    all_normalized_contents = []
     attrs_by_case: Dict[str, Dict[str, set]] = {}
+    candidate_counts = []
+    positive_budget_deltas = []
+    labels_by_count_position: Dict[Tuple[int, int], set] = {}
+    learning_attr_classes: Dict[str, set] = {}
+    source_classes: Dict[str, set] = {}
+    source_occurrences: Counter = Counter()
+    metadata_tuple_classes: Dict[str, set] = {}
+    rubric_ids = []
+    rubric_instructions = []
+    criterion_descriptions: Dict[str, list] = {
+        "technical_correctness": [],
+        "required_reasoning_evidence": [],
+        "unsafe_prohibited_actions": [],
+    }
     forbidden_id_words = re.compile(
         r"adapt|held|unsafe|stale|destructive|irrelevant|mislead|useful|required", re.I
     )
@@ -507,9 +642,14 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
         else:
             heldout_groups.append(group)
 
+        selector_text = " ".join(_strings(case.inputs.to_dict())).casefold()
+        if re.search(r"\b(?:adapt(?:ation)?|held(?:[_ -]?out)?)\b", selector_text):
+            raise ValueError("selector_inputs must not contain split-like markers")
+
         candidates = case.inputs.candidate_context
-        if not 6 <= len(candidates) <= 10:
-            raise ValueError("each tiny-fixture case must have 6-10 candidates")
+        candidate_counts.append(len(candidates))
+        if len(candidates) not in {7, 8, 9}:
+            raise ValueError("each tiny-fixture case must have 7, 8, or 9 candidates")
         total_tokens = sum(item.token_count for item in candidates)
         if total_tokens <= case.inputs.token_budget:
             raise ValueError("candidate tokens must exceed token_budget")
@@ -523,17 +663,37 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
         if any(not values for values in groups.values()):
             raise ValueError("each controlled label group must be nonempty")
         candidate_by_id = {item.context_item_id: item for item in candidates}
-        if set().union(*(set(values) for values in groups.values())) != set(
-            candidate_by_id
-        ):
+        if len(candidate_by_id) != len(candidates):
+            raise ValueError("candidate context item IDs must be unique per case")
+        group_sequences = tuple(groups.values())
+        if any(len(values) != len(set(values)) for values in group_sequences):
+            raise ValueError("sealed label sequences must be duplicate-free")
+        flattened_labels = tuple(item for values in group_sequences for item in values)
+        if len(flattened_labels) != len(set(flattened_labels)):
+            raise ValueError("sealed label groups must be disjoint")
+        if set(flattened_labels) != set(candidate_by_id):
             raise ValueError("sealed labels must collectively cover all candidates")
         nonnegative = set(groups["required"]) | set(groups["useful"])
-        if (
-            sum(candidate_by_id[item].token_count for item in nonnegative)
-            <= case.inputs.token_budget
+        positive_total = sum(candidate_by_id[item].token_count for item in nonnegative)
+        positive_budget_deltas.append(positive_total - case.inputs.token_budget)
+        labels_by_id = {
+            item_id: label for label, values in groups.items() for item_id in values
+        }
+        for position, item in enumerate(candidates):
+            labels_by_count_position.setdefault((len(candidates), position), set()).add(
+                labels_by_id[item.context_item_id]
+            )
+        label_runs = [labels_by_id[item.context_item_id] for item in candidates]
+        if any(
+            label_runs.count(label) > 1
+            and max(index for index, value in enumerate(label_runs) if value == label)
+            - min(index for index, value in enumerate(label_runs) if value == label)
+            + 1
+            == label_runs.count(label)
+            for label in groups
         ):
             raise ValueError(
-                "token budget must force a tradeoff among nonnegative items"
+                "candidate label classes must not form contiguous role blocks"
             )
         for item in candidates:
             if forbidden_id_words.search(
@@ -545,11 +705,21 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
                     "candidate token_count does not match tokenizer convention"
                 )
             learning, controls, fmt = _candidate_attributes(item)
+            label = labels_by_id[item.context_item_id]
+            for attribute in learning:
+                learning_attr_classes.setdefault(attribute, set()).add(label)
+            source_classes.setdefault(item.source, set()).add(label)
+            source_occurrences[item.source] += 1
+            metadata_key = json.dumps(
+                _thaw(item.metadata), sort_keys=True, separators=(",", ":")
+            )
+            metadata_tuple_classes.setdefault(metadata_key, set()).add(label)
             for attribute in learning | controls | {fmt}:
                 if attribute not in definitions:
                     raise ValueError("candidate attribute is absent from ontology")
             all_context_ids.append(item.context_item_id)
             normalized = _normalized_content(item.content)
+            all_normalized_contents.append(normalized)
             (
                 adaptation_contents if case.split == "adaptation" else heldout_contents
             ).add(normalized)
@@ -571,19 +741,97 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
             "required_reasoning_evidence",
             "unsafe_prohibited_actions",
         }
-        if {item.criterion_id for item in rubric.criteria} != expected_criteria:
-            raise ValueError("rubric must contain the required three criterion IDs")
-        if any(len(item.description.split()) < 10 for item in rubric.criteria):
+        criteria_ids = tuple(item.criterion_id for item in rubric.criteria)
+        if len(criteria_ids) != 3 or set(criteria_ids) != expected_criteria:
+            raise ValueError("rubric must contain three unique required criterion IDs")
+        if any(len(item.description.split()) < 14 for item in rubric.criteria):
             raise ValueError(
                 "rubric criterion descriptions must be substantive and case-specific"
+            )
+        anchors = TINY_RUBRIC_ANCHOR_TERMS.get(case.task_case_id)
+        if anchors is None:
+            raise ValueError("rubric anchor terms must be sealed for every case")
+        rubric_texts = (rubric.instructions,) + tuple(
+            item.description for item in rubric.criteria
+        )
+        if any(
+            not all(anchor.casefold() in text.casefold() for anchor in anchors)
+            for text in rubric_texts
+        ):
+            raise ValueError(
+                "rubric text must contain its sealed concrete anchor terms"
+            )
+        rubric_fingerprints = {
+            "instructions": _normalized_sha256(rubric.instructions),
+            **{
+                item.criterion_id: _normalized_sha256(item.description)
+                for item in rubric.criteria
+            },
+        }
+        if rubric_fingerprints != _TINY_RUBRIC_FINGERPRINTS.get(case.task_case_id):
+            raise ValueError("rubric must match its frozen per-case rubric fingerprint")
+        rubric_ids.append(rubric.rubric_id)
+        rubric_instructions.append(_normalized_content(rubric.instructions))
+        for item in rubric.criteria:
+            criterion_descriptions[item.criterion_id].append(
+                _normalized_content(item.description)
             )
         if not math.isclose(
             sum(float(item.weight) for item in rubric.criteria), 1.0, abs_tol=1e-9
         ):
             raise ValueError("rubric weights must sum to 1")
 
+    if Counter(candidate_counts) != {7: 2, 8: 2, 9: 2}:
+        raise ValueError("candidate counts must use 7, 8, and 9 exactly twice")
+    if not any(delta < 0 for delta in positive_budget_deltas) or not any(
+        delta > 0 for delta in positive_budget_deltas
+    ):
+        raise ValueError(
+            "positive-set budget deltas must include shortfalls and surpluses"
+        )
+    if len(set(positive_budget_deltas)) < 4:
+        raise ValueError("positive-set budget deltas must have varied magnitudes")
+    if len({case.inputs.token_budget for case in bundle.cases}) != len(bundle.cases):
+        raise ValueError("token budgets must be independent across cases")
+    for count in (7, 8, 9):
+        conflicts = sum(
+            len(labels_by_count_position[(count, position)]) > 1
+            for position in range(count)
+        )
+        if conflicts < 2:
+            raise ValueError(
+                "candidate count and ordinal position must conflict across paired cases"
+            )
+    if any(len(classes) < 2 for classes in learning_attr_classes.values()):
+        raise ValueError(
+            "every reusable learning attribute must span at least two utility classes"
+        )
+    if any(
+        source_occurrences[source] > 1 and len(classes) < 2
+        for source, classes in source_classes.items()
+    ):
+        raise ValueError(
+            "every recurring source must span at least two utility classes"
+        )
+    if not any(len(classes) > 1 for classes in metadata_tuple_classes.values()):
+        raise ValueError(
+            "visible metadata tuple lookup must not perfectly predict labels"
+        )
+    if len(rubric_ids) != len(set(rubric_ids)):
+        raise ValueError("rubric IDs must be unique across cases")
+    if len(rubric_instructions) != len(set(rubric_instructions)):
+        raise ValueError("rubric instructions must be nonidentical across cases")
+    if any(
+        len(values) != len(set(values)) for values in criterion_descriptions.values()
+    ):
+        raise ValueError("criterion descriptions must be nonidentical across cases")
+
     if len(set(all_context_ids)) != len(all_context_ids):
         raise ValueError("context item IDs must be unique across the bundle")
+    if len(all_normalized_contents) != len(set(all_normalized_contents)):
+        raise ValueError(
+            "normalized duplicate content; candidate content must be globally unique"
+        )
     if adaptation_groups.intersection(heldout_groups):
         raise ValueError(
             "no adaptation provenance group may appear in heldout cases globally"
@@ -614,6 +862,7 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
             "harmful_context_item_ids",
             "useful_attributes",
             "harmful_attributes",
+            "ambiguous_attributes",
             "no_effect_attributes",
             "shared_feature_trap",
         }
@@ -634,16 +883,30 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
         harmful_ids = _string_tuple(
             "harmful_context_item_ids", value["harmful_context_item_ids"]
         )
+        if len(useful_ids) != len(set(useful_ids)) or len(harmful_ids) != len(
+            set(harmful_ids)
+        ):
+            raise ValueError(
+                "feedback context item ID sequences must be duplicate-free"
+            )
         sealed = case.sealed_evaluation
-        expected_useful = set(sealed.required_context_item_ids) | set(
-            sealed.useful_context_item_ids
+        expected_useful_sequence = (
+            sealed.required_context_item_ids + sealed.useful_context_item_ids
         )
-        expected_harmful = set(sealed.misleading_context_item_ids)
-        if set(useful_ids) != expected_useful or set(harmful_ids) != expected_harmful:
+        expected_harmful_sequence = sealed.misleading_context_item_ids
+        expected_useful = set(expected_useful_sequence)
+        expected_harmful = set(expected_harmful_sequence)
+        if (
+            useful_ids != expected_useful_sequence
+            or harmful_ids != expected_harmful_sequence
+        ):
             raise ValueError(
                 "feedback useful/harmful IDs must exactly match sealed labels"
             )
-        if set(event.affected_context_item_ids) != expected_useful | expected_harmful:
+        affected_ids = event.affected_context_item_ids
+        if len(affected_ids) != len(set(affected_ids)):
+            raise ValueError("feedback affected ID sequence must be duplicate-free")
+        if affected_ids != expected_useful_sequence + expected_harmful_sequence:
             raise ValueError(
                 "feedback affected IDs must equal useful and harmful union"
             )
@@ -662,18 +925,37 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
                 for item in expected_harmful
             )
         )
+        expected_ambiguous_attrs = expected_useful_attrs & expected_harmful_attrs
+        expected_useful_only = expected_useful_attrs - expected_harmful_attrs
+        expected_harmful_only = expected_harmful_attrs - expected_useful_attrs
+        useful_attrs = _string_tuple("useful_attributes", value["useful_attributes"])
+        harmful_attrs = _string_tuple("harmful_attributes", value["harmful_attributes"])
+        ambiguous_attrs = _string_tuple(
+            "ambiguous_attributes", value["ambiguous_attributes"]
+        )
+        attribute_sequences = (useful_attrs, harmful_attrs, ambiguous_attrs)
+        if any(len(items) != len(set(items)) for items in attribute_sequences):
+            raise ValueError("feedback attribute sequences must be duplicate-free")
         if (
-            set(_string_tuple("useful_attributes", value["useful_attributes"]))
-            != expected_useful_attrs
-            or set(_string_tuple("harmful_attributes", value["harmful_attributes"]))
-            != expected_harmful_attrs
+            useful_attrs != tuple(sorted(expected_useful_only))
+            or harmful_attrs != tuple(sorted(expected_harmful_only))
+            or ambiguous_attrs != tuple(sorted(expected_ambiguous_attrs))
         ):
             raise ValueError(
-                "feedback attributes must be exhaustive labeled learning-attribute unions"
+                "feedback attributes must exactly partition labeled learning attributes"
             )
-        controls = set(
-            _string_tuple("no_effect_attributes", value["no_effect_attributes"])
+        if (
+            set(useful_attrs) & set(harmful_attrs)
+            or set(useful_attrs) & set(ambiguous_attrs)
+            or set(harmful_attrs) & set(ambiguous_attrs)
+        ):
+            raise ValueError("feedback attribute polarity categories must be disjoint")
+        control_sequence = _string_tuple(
+            "no_effect_attributes", value["no_effect_attributes"]
         )
+        if len(control_sequence) != len(set(control_sequence)):
+            raise ValueError("no-effect attribute sequence must be duplicate-free")
+        controls = set(control_sequence)
         trap = _nonempty_string("shared_feature_trap", value["shared_feature_trap"])
         positive_controls = set().union(
             *(
@@ -684,13 +966,15 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
         negative_controls = set().union(
             *(
                 _candidate_attributes(candidate_by_id[item])[1]
-                for item in expected_harmful | set(sealed.irrelevant_context_item_ids)
+                for item in expected_harmful
             )
         )
         if not controls or not controls.issubset(positive_controls & negative_controls):
             raise ValueError(
                 "no-effect attributes must span positive and negative utility classes"
             )
+        if control_sequence != ("presentation:teal-header",):
+            raise ValueError("no_effect_attributes must exactly equal the teal control")
         positive_formats = {
             _candidate_attributes(candidate_by_id[item])[2] for item in expected_useful
         }
@@ -701,27 +985,20 @@ def validate_tiny_fixture(bundle: DatasetBundle) -> None:
             raise ValueError(
                 "shared_feature_trap must occur in positive and misleading candidates"
             )
+        if trap != "format:runbook":
+            raise ValueError("shared_feature_trap must exactly equal format:runbook")
 
     for plan in bundle.family_plans:
-        adaptation_positive = set().union(
+        adaptation_attributes = set().union(
             *(
-                attrs_by_case[item]["required"] | attrs_by_case[item]["useful"]
+                set().union(*attrs_by_case[item].values())
                 for item in plan.adaptation_order
             )
         )
-        adaptation_harmful = set().union(
-            *(attrs_by_case[item]["misleading"] for item in plan.adaptation_order)
-        )
-        held = attrs_by_case[plan.held_out_case_id]
-        if not adaptation_positive.issubset(held["required"] | held["useful"]):
+        held_attributes = set().union(*attrs_by_case[plan.held_out_case_id].values())
+        if not held_attributes.issubset(adaptation_attributes):
             raise ValueError(
-                "heldout positive candidates must carry adaptation useful attributes"
-            )
-        if not adaptation_harmful.issubset(held["misleading"]):
-            raise ValueError(
-                "heldout misleading candidates must carry adaptation harmful attributes"
+                "heldout learning attributes must be represented in adaptation"
             )
 
-    for text in _strings(bundle.to_dict()):
-        if any(pattern.search(text) for pattern in _SECRET_PATTERNS):
-            raise ValueError("fixture contains an obvious secret-like pattern")
+    _check_for_secrets(bundle.to_dict())
