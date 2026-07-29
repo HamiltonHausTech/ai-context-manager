@@ -489,6 +489,47 @@ def test_material_policy_changes_recompute_feature_estimate_ids():
         }.isdisjoint(baseline_ids)
 
 
+def test_reward_changes_recompute_feature_and_id_local_estimate_ids():
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    context_item_id = event.affected_context_item_ids[0]
+    positive_event = _numeric(
+        event,
+        event_id="same-event-id",
+        value=1.0,
+        affected=(context_item_id,),
+    )
+    negative_event = replace(positive_event, numeric_value=-1.0)
+
+    positive = _learn(events=(positive_event,), inputs=inputs)
+    negative = _learn(events=(negative_event,), inputs=inputs)
+
+    assert {
+        estimate.utility_estimate_id for estimate in positive.feature_estimates
+    }.isdisjoint(
+        estimate.utility_estimate_id for estimate in negative.feature_estimates
+    )
+    assert {
+        estimate.id_local_utility_estimate_id
+        for estimate in positive.id_local_estimates
+    }.isdisjoint(
+        estimate.id_local_utility_estimate_id
+        for estimate in negative.id_local_estimates
+    )
+
+
+def test_estimate_identity_includes_derived_utility_and_confidence():
+    import experiments.adaptive_selection.learning as learning
+
+    policy = LearningPolicy()
+    args = ("feature-utility", policy, "family", "basis:observed", ("event",))
+    baseline = learning._identity(*args, 0.25, 0.5)
+
+    assert learning._identity(*args, -0.25, 0.5) != baseline
+    assert learning._identity(*args, 0.25, 0.25) != baseline
+    assert learning._identity(*args, 0.25, 0.5) == baseline
+
+
 def test_same_inputs_policy_and_clock_are_byte_equivalent():
     first = _learn()
     second = _learn()

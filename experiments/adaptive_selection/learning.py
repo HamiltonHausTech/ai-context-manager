@@ -398,6 +398,8 @@ class LearningSnapshot:
                 estimate.task_family_id,
                 feature,
                 tuple(estimate.source_event_ids),
+                estimate.estimated_utility,
+                estimate.confidence,
             ):
                 raise ValueError(
                     "feature estimate identity does not match its artifact"
@@ -444,6 +446,8 @@ class LearningSnapshot:
                 estimate.task_family_id,
                 estimate.context_item_id,
                 tuple(estimate.source_event_ids),
+                estimate.estimated_utility,
+                estimate.confidence,
             ):
                 raise ValueError(
                     "ID-local estimate identity does not match its artifact"
@@ -519,8 +523,12 @@ def _identity(
     family: str,
     target: str,
     source_event_ids: Tuple[str, ...],
+    estimated_utility: float,
+    confidence: float,
 ) -> str:
     payload = {
+        "confidence": confidence,
+        "estimated_utility": estimated_utility,
         "family": family,
         "kind": kind,
         "policy": policy.to_dict(),
@@ -720,7 +728,13 @@ def learn_utilities(
         source_ids = tuple(evidence.source_event_ids)
         estimate = UtilityEstimate(
             utility_estimate_id=_identity(
-                "feature-utility", policy, family, feature, source_ids
+                "feature-utility",
+                policy,
+                family,
+                feature,
+                source_ids,
+                utility,
+                confidence,
             ),
             task_family_id=family,
             context_attributes=(feature,),
@@ -742,7 +756,13 @@ def learn_utilities(
         source_ids = tuple(evidence.source_event_ids)
         estimate = IDLocalUtilityEstimate(
             id_local_utility_estimate_id=_identity(
-                "id-local-utility", policy, family, context_item_id, source_ids
+                "id-local-utility",
+                policy,
+                family,
+                context_item_id,
+                source_ids,
+                utility,
+                confidence,
             ),
             task_family_id=family,
             context_item_id=context_item_id,

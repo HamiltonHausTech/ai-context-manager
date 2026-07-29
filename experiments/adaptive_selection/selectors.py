@@ -167,6 +167,8 @@ def validate_reusable_feature(feature: Any, candidate_ids: Sequence[str] = ()) -
     returned feature.
     """
 
+    if isinstance(candidate_ids, (str, bytes, bytearray)):
+        raise TypeError("candidate_ids must be a sequence of strings")
     try:
         copied_candidate_ids = tuple(candidate_ids)
     except TypeError:
@@ -225,6 +227,8 @@ def reusable_features(
 
     if not isinstance(item, ContextItem):
         raise TypeError("item must be a ContextItem record")
+    if isinstance(candidate_ids, (str, bytes, bytearray)):
+        raise TypeError("candidate_ids must be a sequence of strings")
     try:
         copied_candidate_ids = tuple(candidate_ids)
     except TypeError:

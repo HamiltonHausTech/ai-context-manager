@@ -14,6 +14,7 @@ from experiments.adaptive_selection.schema import ContextItem, TaskInputs
 from experiments.adaptive_selection.selectors import (
     AdaptivePolicySelector,
     FullContextSelector,
+    reusable_features,
     SelectionResult,
     SimilarityTopKSelector,
     StaticPolicySelector,
@@ -35,6 +36,45 @@ def test_public_reusable_feature_validator_preserves_candidate_id_screening():
         validate_reusable_feature(
             "signal:item-abc-123", candidate_ids=("item-abc-123",)
         )
+
+
+@pytest.mark.parametrize(
+    "candidate_ids", ["item-abc-123", b"item-abc-123", bytearray(b"item-abc-123")]
+)
+@pytest.mark.parametrize("api", ["validate", "extract"])
+def test_reusable_feature_apis_reject_scalar_string_like_candidate_ids(
+    api, candidate_ids
+):
+    if api == "validate":
+        call = lambda: validate_reusable_feature(
+            "basis:observed", candidate_ids=candidate_ids
+        )
+    else:
+        item = load_tiny_fixture(FIXTURE).cases[0].inputs.candidate_context[0]
+        call = lambda: reusable_features(item, candidate_ids=candidate_ids)
+
+    with pytest.raises(TypeError, match="candidate_ids must be a sequence of strings"):
+        call()
+
+
+@pytest.mark.parametrize("candidate_ids", [("item-abc-123",), ["item-abc-123"]])
+@pytest.mark.parametrize("api", ["validate", "extract"])
+def test_reusable_feature_apis_accept_sequences_and_preserve_candidate_id_screening(
+    api, candidate_ids
+):
+    if api == "validate":
+        call = lambda: validate_reusable_feature(
+            "signal:item-abc-123", candidate_ids=candidate_ids
+        )
+    else:
+        item = replace(
+            load_tiny_fixture(FIXTURE).cases[0].inputs.candidate_context[0],
+            metadata={"learning_attributes": ("signal:item-abc-123",)},
+        )
+        call = lambda: reusable_features(item, candidate_ids=candidate_ids)
+
+    with pytest.raises(ValueError, match="candidate ID"):
+        call()
 
 
 def _selectors():
