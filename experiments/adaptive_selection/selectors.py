@@ -199,6 +199,27 @@ def _visible_features(
     return tuple(sorted(set(features)))
 
 
+def reusable_features(
+    item: ContextItem, candidate_ids: Sequence[str] = ()
+) -> Tuple[str, ...]:
+    """Return the canonical selector-visible reusable features for one item.
+
+    This read-only API is shared with learning so feature validation and extraction
+    cannot drift from :class:`AdaptivePolicySelector`. Context-item IDs are accepted
+    only as safety-screening inputs and are never emitted as features.
+    """
+
+    if not isinstance(item, ContextItem):
+        raise TypeError("item must be a ContextItem record")
+    try:
+        copied_candidate_ids = tuple(candidate_ids)
+    except TypeError:
+        raise TypeError("candidate_ids must be a sequence of strings")
+    if any(not isinstance(candidate_id, str) for candidate_id in copied_candidate_ids):
+        raise TypeError("candidate_ids must be a sequence of strings")
+    return _visible_features(item, copied_candidate_ids)
+
+
 def _normalize_pool_scores(raw_scores: Sequence[float]) -> Tuple[float, ...]:
     """Dense-rank a complete finite candidate pool onto ``[0, 1]``.
 
@@ -693,7 +714,7 @@ class AdaptivePolicySelector(StaticPolicySelector):
     ) -> Tuple[float, Dict[str, ScoreValue]]:
         static_raw_score, factors = super()._score_details(item, candidate_ids)
         utility_contributions = []
-        for feature in _visible_features(item, candidate_ids):
+        for feature in reusable_features(item, candidate_ids):
             estimate = self._utility(feature)
             if estimate:
                 factors["policy.adaptive.feature_utility.{}".format(feature)] = estimate
@@ -731,4 +752,5 @@ __all__ = [
     "SelectorDecision",
     "SimilarityTopKSelector",
     "StaticPolicySelector",
+    "reusable_features",
 ]
