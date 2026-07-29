@@ -160,6 +160,22 @@ def _validate_feature_name(
     return feature
 
 
+def validate_reusable_feature(feature: Any, candidate_ids: Sequence[str] = ()) -> str:
+    """Validate and return one canonical selector-safe reusable feature.
+
+    Candidate IDs are screening inputs only. They are never incorporated into the
+    returned feature.
+    """
+
+    try:
+        copied_candidate_ids = tuple(candidate_ids)
+    except TypeError:
+        raise TypeError("candidate_ids must be a sequence of strings")
+    if any(not isinstance(candidate_id, str) for candidate_id in copied_candidate_ids):
+        raise TypeError("candidate_ids must be a sequence of strings")
+    return _validate_feature_name(feature, candidate_ids=copied_candidate_ids)
+
+
 def _visible_features(
     item: ContextItem, candidate_ids: Sequence[str]
 ) -> Tuple[str, ...]:
@@ -188,9 +204,7 @@ def _visible_features(
                 "metadata.{} must contain feature strings".format(field)
             )
         for member in values:
-            validated = _validate_feature_name(
-                member, "metadata.{} feature".format(field), candidate_ids
-            )
+            validated = validate_reusable_feature(member, candidate_ids)
             if field == "format" and not validated.startswith("format:"):
                 raise UnsafeFeatureError(
                     "metadata.format must use the format namespace"
@@ -753,4 +767,5 @@ __all__ = [
     "SimilarityTopKSelector",
     "StaticPolicySelector",
     "reusable_features",
+    "validate_reusable_feature",
 ]

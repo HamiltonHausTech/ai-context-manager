@@ -370,6 +370,21 @@ def test_policy_validation(policy_kwargs):
         LearningPolicy(**policy_kwargs)
 
 
+def test_empty_accepted_signal_set_is_valid_and_rejects_every_event():
+    policy = LearningPolicy(accepted_signal_types=frozenset())
+    assert policy.accepted_signal_types == frozenset()
+    assert _learn(events=(), policy=policy).to_dict() == {
+        "feature_estimates": [],
+        "feature_utilities": {},
+        "id_local_estimates": [],
+        "id_local_utilities": {},
+        "policy": policy.to_dict(),
+    }
+    bundle, inputs = _bundle_parts()
+    with pytest.raises(ValueError, match="unsupported|accepted"):
+        _learn(events=(bundle.adaptation_feedback[0],), inputs=inputs, policy=policy)
+
+
 def test_recursive_immutability_and_defensive_copies():
     accepted = {"context_utility", "correction"}
     policy = LearningPolicy(accepted_signal_types=accepted)
@@ -442,6 +457,165 @@ def test_same_inputs_policy_and_clock_are_byte_equivalent():
     assert json.dumps(
         first.to_dict(), sort_keys=True, separators=(",", ":")
     ) == json.dumps(second.to_dict(), sort_keys=True, separators=(",", ":"))
+
+
+def test_valid_learned_snapshot_can_be_reconstructed_without_serialization_changes():
+    snapshot = _learn()
+    reconstructed = LearningSnapshot(
+        policy=snapshot.policy,
+        feature_estimates=snapshot.feature_estimates,
+        id_local_estimates=snapshot.id_local_estimates,
+        feature_utilities=snapshot.feature_utilities,
+        id_local_utilities=snapshot.id_local_utilities,
+    )
+    assert reconstructed.to_dict() == snapshot.to_dict()
+
+
+def _snapshot_changes(snapshot, **changes):
+    values = {
+        "policy": snapshot.policy,
+        "feature_estimates": snapshot.feature_estimates,
+        "id_local_estimates": snapshot.id_local_estimates,
+        "feature_utilities": snapshot.feature_utilities,
+        "id_local_utilities": snapshot.id_local_utilities,
+    }
+    values.update(changes)
+    return LearningSnapshot(**values)
+
+
+@pytest.mark.parametrize("value", [True, float("inf"), -1.01, 1.01])
+def test_snapshot_rejects_non_real_or_unbounded_active_values(value):
+    snapshot = _learn()
+    family = next(iter(snapshot.feature_utilities))
+    utilities = {
+        outer_family: dict(family_values)
+        for outer_family, family_values in snapshot.feature_utilities.items()
+    }
+    feature = next(iter(utilities[family]))
+    utilities[family][feature] = value
+    with pytest.raises(ValueError, match="feature_utilities"):
+        _snapshot_changes(snapshot, feature_utilities=utilities)
+
+
+def test_snapshot_rejects_active_map_without_estimates():
+    with pytest.raises(ValueError, match="correspond exactly"):
+        LearningSnapshot(
+            policy=LearningPolicy(),
+            feature_estimates=(),
+            id_local_estimates=(),
+            feature_utilities={"family": {"basis:observed": 0.5}},
+            id_local_utilities={},
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"context_attributes": ("tag:context_item_id-secret",)},
+        {"context_attributes": ()},
+        {"context_attributes": ("basis:observed", "signal:path-correlation")},
+        {"context_attributes": ("not canonical",)},
+        {"task_family_id": "other-family"},
+        {"estimated_utility": -0.75},
+        {"estimator_version": "wrong-estimator"},
+        {"provenance": "learning:wrong-credit-policy"},
+        {"utility_estimate_id": "wrong-identity"},
+    ],
+)
+def test_snapshot_rejects_inconsistent_feature_estimate_artifacts(change):
+    snapshot = _learn()
+    estimate = next(
+        item
+        for item in snapshot.feature_estimates
+        if len(item.source_event_ids) >= snapshot.policy.minimum_evidence_count
+    )
+    if change == {"context_attributes": ()}:
+        altered = replace(estimate)
+        object.__setattr__(altered, "context_attributes", ())
+    else:
+        altered = replace(estimate, **change)
+    estimates = tuple(
+        altered if item is estimate else item for item in snapshot.feature_estimates
+    )
+    with pytest.raises(ValueError):
+        _snapshot_changes(snapshot, feature_estimates=estimates)
+
+
+def test_snapshot_rejects_provisional_estimate_in_active_map_and_duplicate_targets():
+    snapshot = _learn()
+    provisional = next(
+        item
+        for item in snapshot.feature_estimates
+        if len(item.source_event_ids) < snapshot.policy.minimum_evidence_count
+    )
+    family = provisional.task_family_id
+    feature = provisional.context_attributes[0]
+    utilities = {
+        outer_family: dict(family_values)
+        for outer_family, family_values in snapshot.feature_utilities.items()
+    }
+    utilities.setdefault(family, {})[feature] = provisional.estimated_utility
+    with pytest.raises(ValueError, match="correspond exactly"):
+        _snapshot_changes(snapshot, feature_utilities=utilities)
+    with pytest.raises(ValueError, match="duplicate"):
+        _snapshot_changes(
+            snapshot,
+            feature_estimates=snapshot.feature_estimates
+            + (snapshot.feature_estimates[0],),
+        )
+
+
+@pytest.mark.parametrize("value", [True, float("inf"), -1.01, 1.01])
+def test_snapshot_revalidates_tampered_estimate_values(value):
+    snapshot = _learn()
+    estimate = replace(snapshot.feature_estimates[0])
+    object.__setattr__(estimate, "estimated_utility", value)
+    estimates = (estimate,) + snapshot.feature_estimates[1:]
+    with pytest.raises(ValueError, match="estimated_utility"):
+        _snapshot_changes(snapshot, feature_estimates=estimates)
+
+
+def test_snapshot_enforces_exact_id_map_correspondence_and_unique_targets():
+    snapshot = _learn()
+    provisional = snapshot.id_local_estimates[0]
+    with pytest.raises(ValueError, match="correspond exactly"):
+        _snapshot_changes(
+            snapshot,
+            id_local_utilities={
+                provisional.task_family_id: {
+                    provisional.context_item_id: provisional.estimated_utility
+                }
+            },
+        )
+    with pytest.raises(ValueError, match="duplicate"):
+        _snapshot_changes(
+            snapshot,
+            id_local_estimates=snapshot.id_local_estimates
+            + (snapshot.id_local_estimates[0],),
+        )
+
+
+def test_snapshot_rejects_id_artifacts_and_maps_when_id_learning_is_disabled():
+    enabled = _learn()
+    disabled_policy = LearningPolicy(id_local_enabled=False)
+    with pytest.raises(ValueError, match="disabled"):
+        LearningSnapshot(
+            policy=disabled_policy,
+            feature_estimates=(),
+            id_local_estimates=enabled.id_local_estimates[:1],
+            feature_utilities={},
+            id_local_utilities={},
+        )
+    family = enabled.id_local_estimates[0].task_family_id
+    context_id = enabled.id_local_estimates[0].context_item_id
+    with pytest.raises(ValueError, match="disabled"):
+        LearningSnapshot(
+            policy=disabled_policy,
+            feature_estimates=(),
+            id_local_estimates=(),
+            feature_utilities={},
+            id_local_utilities={family: {context_id: 0.25}},
+        )
 
 
 def test_output_public_types_are_frozen_and_well_typed():
@@ -593,3 +767,52 @@ def test_rejects_structured_correction_nonnegative_correction_and_wrong_record_t
         _learn(events=(object(),), inputs=inputs)
     with pytest.raises(TypeError, match="TaskInputs"):
         _learn(events=(event,), inputs={event.task_case_id: object()})
+
+
+@pytest.mark.parametrize("value", [True, -1.01, 1.01, float("nan"), float("inf")])
+def test_learner_revalidates_tampered_numeric_context_utility(value):
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    object.__setattr__(event, "structured_value", None)
+    object.__setattr__(event, "numeric_value", value)
+    with pytest.raises(ValueError, match="numeric_value"):
+        _learn(events=(event,), inputs=inputs)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("numeric_value", True),
+        ("numeric_value", -1.01),
+        ("numeric_value", 1.01),
+        ("numeric_value", float("nan")),
+        ("numeric_value", float("inf")),
+        ("correction_category", None),
+        ("correction_category", ""),
+        ("correction_text", None),
+        ("correction_text", "   "),
+    ],
+)
+def test_learner_revalidates_tampered_numeric_correction(field, value):
+    bundle, inputs = _bundle_parts()
+    original = bundle.adaptation_feedback[0]
+    event = _numeric(
+        original,
+        event_id="tampered-correction",
+        value=-0.5,
+        signal_type="correction",
+    )
+    object.__setattr__(event, field, value)
+    with pytest.raises(ValueError, match="numeric_value|correction"):
+        _learn(events=(event,), inputs=inputs)
+
+
+def test_learner_rejects_tampered_context_utility_with_correction_fields():
+    bundle, inputs = _bundle_parts()
+    event = bundle.adaptation_feedback[0]
+    object.__setattr__(event, "structured_value", None)
+    object.__setattr__(event, "numeric_value", 0.5)
+    object.__setattr__(event, "correction_category", "factual")
+    object.__setattr__(event, "correction_text", "Injected correction metadata")
+    with pytest.raises(ValueError, match="correction.*null"):
+        _learn(events=(event,), inputs=inputs)

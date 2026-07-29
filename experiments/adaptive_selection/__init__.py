@@ -41,6 +41,7 @@ from .selectors import (
     SimilarityTopKSelector,
     StaticPolicySelector,
     reusable_features,
+    validate_reusable_feature,
 )
 from .schema import (
     FEEDBACK_SIGNAL_TYPES,
@@ -97,6 +98,7 @@ __all__ = [
     "SimilarityTopKSelector",
     "StaticPolicySelector",
     "reusable_features",
+    "validate_reusable_feature",
     "SCHEMA_VERSION",
     "FEEDBACK_SIGNAL_TYPES",
     "FEEDBACK_SOURCES",

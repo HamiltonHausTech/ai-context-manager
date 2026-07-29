@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import Any, DefaultDict, Dict, FrozenSet, List, Tuple
 
 from .schema import FeedbackEvent, TaskInputs, UtilityEstimate
-from .selectors import reusable_features
+from .selectors import reusable_features, validate_reusable_feature
 
 _ALLOWED_SIGNAL_TYPES = frozenset({"context_utility", "correction"})
 _STRUCTURED_CONTEXT_UTILITY_KEYS = frozenset(
@@ -81,6 +81,68 @@ def _freeze_nested_float_mapping(
     )
 
 
+def _validate_context_item_id(context_item_id: Any) -> str:
+    return _nonempty("context_item_id", context_item_id)
+
+
+def _validated_utility_mapping(
+    name: str,
+    values: Any,
+    key_validator: Callable[[Any], str],
+) -> Dict[str, Dict[str, float]]:
+    if not isinstance(values, Mapping):
+        raise ValueError("{} must be a mapping".format(name))
+    copied: Dict[str, Dict[str, float]] = {}
+    for family, family_values in values.items():
+        family = _nonempty("{} family".format(name), family)
+        if not isinstance(family_values, Mapping):
+            raise ValueError("{} family values must be mappings".format(name))
+        copied[family] = {}
+        for key, value in family_values.items():
+            validated_key = key_validator(key)
+            utility = _finite("{} value".format(name), value)
+            if not -1.0 <= utility <= 1.0:
+                raise ValueError("{} value must be between -1 and 1".format(name))
+            copied[family][validated_key] = utility
+    return copied
+
+
+def _validate_estimate_common(
+    task_family_id: Any,
+    estimated_utility: Any,
+    confidence: Any,
+    source_event_ids: Any,
+    estimator_version: Any,
+    provenance: Any,
+    policy: "LearningPolicy",
+    expected_provenance: str,
+) -> None:
+    _nonempty("task_family_id", task_family_id)
+    utility = _finite("estimated_utility", estimated_utility)
+    if not -1.0 <= utility <= 1.0:
+        raise ValueError("estimated_utility must be between -1 and 1")
+    confidence_value = _finite("confidence", confidence)
+    if not 0.0 <= confidence_value <= 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    source_ids = _string_tuple("source_event_ids", source_event_ids)
+    if not source_ids:
+        raise ValueError("source_event_ids must not be empty")
+    if estimator_version != policy.estimator_version:
+        raise ValueError("estimate estimator_version must match learning policy")
+    if provenance != expected_provenance:
+        raise ValueError("estimate provenance must match learning policy")
+
+
+def _eligible_utilities(
+    targets: Mapping[Tuple[str, str], Any], minimum_evidence_count: int
+) -> Dict[str, Dict[str, float]]:
+    eligible: DefaultDict[str, Dict[str, float]] = defaultdict(dict)
+    for (family, target), estimate in targets.items():
+        if len(estimate.source_event_ids) >= minimum_evidence_count:
+            eligible[family][target] = float(estimate.estimated_utility)
+    return dict(eligible)
+
+
 @dataclass(frozen=True)
 class LearningPolicy:
     """Frozen mechanics for Task 6 utility estimation."""
@@ -114,7 +176,7 @@ class LearningPolicy:
             accepted = frozenset(self.accepted_signal_types)
         except TypeError:
             raise ValueError("accepted_signal_types must be a collection")
-        if not accepted or not accepted.issubset(_ALLOWED_SIGNAL_TYPES):
+        if not accepted.issubset(_ALLOWED_SIGNAL_TYPES):
             raise ValueError(
                 "accepted_signal_types may contain only context_utility and correction"
             )
@@ -229,17 +291,129 @@ class LearningSnapshot:
             raise TypeError(
                 "id_local_estimates must contain IDLocalUtilityEstimate records"
             )
+        if not self.policy.id_local_enabled and (
+            id_local_estimates or self.id_local_utilities
+        ):
+            raise ValueError(
+                "ID-local estimates and utilities must be empty when disabled"
+            )
+        feature_targets: Dict[Tuple[str, str], UtilityEstimate] = {}
+        expected_provenance = "learning:{}".format(
+            self.policy.credit_assignment_version
+        )
+        for estimate in feature_estimates:
+            UtilityEstimate(
+                utility_estimate_id=estimate.utility_estimate_id,
+                task_family_id=estimate.task_family_id,
+                context_attributes=estimate.context_attributes,
+                estimated_utility=estimate.estimated_utility,
+                confidence=estimate.confidence,
+                source_event_ids=estimate.source_event_ids,
+                estimator_version=estimate.estimator_version,
+                estimated_timestamp=estimate.estimated_timestamp,
+                provenance=estimate.provenance,
+                schema_version=estimate.schema_version,
+            )
+            if len(estimate.context_attributes) != 1:
+                raise ValueError(
+                    "feature estimates must contain exactly one context attribute"
+                )
+            feature = validate_reusable_feature(estimate.context_attributes[0])
+            _validate_estimate_common(
+                estimate.task_family_id,
+                estimate.estimated_utility,
+                estimate.confidence,
+                estimate.source_event_ids,
+                estimate.estimator_version,
+                estimate.provenance,
+                self.policy,
+                expected_provenance,
+            )
+            target = (estimate.task_family_id, feature)
+            if target in feature_targets:
+                raise ValueError("duplicate feature estimate target")
+            if estimate.utility_estimate_id != _identity(
+                "feature-utility",
+                self.policy,
+                estimate.task_family_id,
+                feature,
+                tuple(estimate.source_event_ids),
+            ):
+                raise ValueError(
+                    "feature estimate identity does not match its artifact"
+                )
+            feature_targets[target] = estimate
+
+        id_targets: Dict[Tuple[str, str], IDLocalUtilityEstimate] = {}
+        for estimate in id_local_estimates:
+            IDLocalUtilityEstimate(
+                id_local_utility_estimate_id=estimate.id_local_utility_estimate_id,
+                task_family_id=estimate.task_family_id,
+                context_item_id=estimate.context_item_id,
+                estimated_utility=estimate.estimated_utility,
+                confidence=estimate.confidence,
+                source_event_ids=estimate.source_event_ids,
+                estimator_version=estimate.estimator_version,
+                estimated_timestamp=estimate.estimated_timestamp,
+                provenance=estimate.provenance,
+            )
+            _nonempty("context_item_id", estimate.context_item_id)
+            _validate_estimate_common(
+                estimate.task_family_id,
+                estimate.estimated_utility,
+                estimate.confidence,
+                estimate.source_event_ids,
+                estimate.estimator_version,
+                estimate.provenance,
+                self.policy,
+                expected_provenance,
+            )
+            target = (estimate.task_family_id, estimate.context_item_id)
+            if target in id_targets:
+                raise ValueError("duplicate ID-local estimate target")
+            if estimate.id_local_utility_estimate_id != _identity(
+                "id-local-utility",
+                self.policy,
+                estimate.task_family_id,
+                estimate.context_item_id,
+                tuple(estimate.source_event_ids),
+            ):
+                raise ValueError(
+                    "ID-local estimate identity does not match its artifact"
+                )
+            id_targets[target] = estimate
+
+        feature_utilities = _validated_utility_mapping(
+            "feature_utilities", self.feature_utilities, validate_reusable_feature
+        )
+        id_local_utilities = _validated_utility_mapping(
+            "id_local_utilities", self.id_local_utilities, _validate_context_item_id
+        )
+        expected_features = _eligible_utilities(
+            feature_targets, self.policy.minimum_evidence_count
+        )
+        expected_ids = _eligible_utilities(
+            id_targets, self.policy.minimum_evidence_count
+        )
+        if feature_utilities != expected_features:
+            raise ValueError(
+                "feature_utilities must correspond exactly to eligible feature estimates"
+            )
+        if id_local_utilities != expected_ids:
+            raise ValueError(
+                "id_local_utilities must correspond exactly to eligible ID-local estimates"
+            )
         object.__setattr__(self, "feature_estimates", feature_estimates)
         object.__setattr__(self, "id_local_estimates", id_local_estimates)
         object.__setattr__(
             self,
             "feature_utilities",
-            _freeze_nested_float_mapping(self.feature_utilities),
+            _freeze_nested_float_mapping(feature_utilities),
         )
         object.__setattr__(
             self,
             "id_local_utilities",
-            _freeze_nested_float_mapping(self.id_local_utilities),
+            _freeze_nested_float_mapping(id_local_utilities),
         )
 
     def feature_utilities_for(self, task_family_id: str) -> Mapping[str, float]:
@@ -342,21 +516,32 @@ def _item_rewards(
         raise ValueError("feedback contains unknown affected context item IDs")
 
     if event.signal_type == "context_utility":
+        if event.correction_category is not None or event.correction_text is not None:
+            raise ValueError("correction-only fields must be null for context_utility")
         if event.structured_value is not None:
+            if event.numeric_value is not None:
+                raise ValueError(
+                    "context_utility requires exactly one feedback value encoding"
+                )
             return _structured_item_rewards(event, known_ids)
         if event.numeric_value is None:
             raise ValueError("numeric context_utility requires numeric_value")
-        return {context_id: float(event.numeric_value) for context_id in affected}
+        value = _finite("numeric_value", event.numeric_value)
+        if not -1.0 <= value <= 1.0:
+            raise ValueError("numeric_value must be between -1 and 1")
+        return {context_id: value for context_id in affected}
 
+    _nonempty("correction_category", event.correction_category)
+    _nonempty("correction_text", event.correction_text)
     if event.structured_value is not None:
         raise ValueError("structured correction is unsupported")
     if event.numeric_value is None:
         raise ValueError("numeric correction requires numeric_value")
-    value = float(event.numeric_value)
+    value = _finite("numeric_value", event.numeric_value)
+    if not -1.0 <= value <= 1.0:
+        raise ValueError("numeric_value must be between -1 and 1")
     if value >= 0.0:
         raise ValueError("numeric correction must be strictly negative")
-    # FeedbackEvent construction already requires correction fields. Their text is never
-    # interpreted; only the signed numeric value participates in credit assignment.
     return {context_id: value for context_id in affected}
 
 

@@ -17,6 +17,7 @@ from experiments.adaptive_selection.selectors import (
     SelectionResult,
     SimilarityTopKSelector,
     StaticPolicySelector,
+    validate_reusable_feature,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny_experiment.json"
@@ -26,6 +27,14 @@ SELECTOR_TYPES = (
     StaticPolicySelector,
     AdaptivePolicySelector,
 )
+
+
+def test_public_reusable_feature_validator_preserves_candidate_id_screening():
+    assert validate_reusable_feature("basis:observed") == "basis:observed"
+    with pytest.raises(ValueError, match="candidate ID"):
+        validate_reusable_feature(
+            "signal:item-abc-123", candidate_ids=("item-abc-123",)
+        )
 
 
 def _selectors():

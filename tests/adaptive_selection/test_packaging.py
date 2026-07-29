@@ -39,6 +39,7 @@ EXPECTED_PUBLIC_NAMES = {
     "SimilarityTopKSelector",
     "StaticPolicySelector",
     "reusable_features",
+    "validate_reusable_feature",
     "SCHEMA_VERSION",
     "FEEDBACK_SIGNAL_TYPES",
     "FEEDBACK_SOURCES",
