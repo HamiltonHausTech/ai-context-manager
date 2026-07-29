@@ -125,7 +125,7 @@ jobs:
 
     - name: Create dependency update issue
       if: failure()
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           const title = 'Security: Outdated Dependencies Detected';
