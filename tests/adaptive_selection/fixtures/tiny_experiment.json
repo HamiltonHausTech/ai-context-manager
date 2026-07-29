@@ -1,0 +1,1781 @@
+{
+  "adaptation_feedback": [
+    {
+      "affected_context_item_ids": [
+        "q7m2",
+        "b4x9",
+        "n8k1",
+        "c3v6",
+        "p5d0",
+        "h2r8"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-01",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:01:00Z",
+      "provenance": "oracle:stage0-v2",
+      "run_id": "planned-run-net-adapt-01",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "ambiguous_attributes": [
+          "action:reconcile",
+          "action:replace",
+          "signal:authority-identity",
+          "signal:path-correlation"
+        ],
+        "harmful_attributes": [
+          "basis:assumed",
+          "scope:global"
+        ],
+        "harmful_context_item_ids": [
+          "p5d0",
+          "h2r8"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "presentation:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook",
+        "useful_attributes": [
+          "basis:observed",
+          "scope:bounded"
+        ],
+        "useful_context_item_ids": [
+          "q7m2",
+          "b4x9",
+          "n8k1",
+          "c3v6"
+        ]
+      },
+      "task_case_id": "net-adapt-01",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "affected_context_item_ids": [
+        "d6s1",
+        "m4j8",
+        "a9t3",
+        "k5c0",
+        "r8y4",
+        "e1n6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-02",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:02:00Z",
+      "provenance": "oracle:stage0-v2",
+      "run_id": "planned-run-net-adapt-02",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "ambiguous_attributes": [
+          "action:reconcile",
+          "action:replace",
+          "signal:authority-identity",
+          "signal:path-correlation"
+        ],
+        "harmful_attributes": [
+          "basis:assumed",
+          "scope:global"
+        ],
+        "harmful_context_item_ids": [
+          "k5c0",
+          "r8y4",
+          "e1n6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "presentation:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook",
+        "useful_attributes": [
+          "basis:observed",
+          "scope:bounded"
+        ],
+        "useful_context_item_ids": [
+          "d6s1",
+          "m4j8",
+          "a9t3"
+        ]
+      },
+      "task_case_id": "net-adapt-02",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "affected_context_item_ids": [
+        "r2w7",
+        "c8h1",
+        "m5q9",
+        "a1k6",
+        "u7d3"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-03",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:03:00Z",
+      "provenance": "oracle:stage0-v2",
+      "run_id": "planned-run-tf-adapt-01",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "ambiguous_attributes": [
+          "signal:authority-identity",
+          "signal:path-correlation"
+        ],
+        "harmful_attributes": [
+          "scope:global"
+        ],
+        "harmful_context_item_ids": [
+          "u7d3"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "presentation:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook",
+        "useful_attributes": [
+          "action:reconcile",
+          "action:replace",
+          "basis:observed",
+          "scope:bounded"
+        ],
+        "useful_context_item_ids": [
+          "r2w7",
+          "c8h1",
+          "m5q9",
+          "a1k6"
+        ]
+      },
+      "task_case_id": "tf-adapt-01",
+      "task_family_id": "terraform-drift-state"
+    },
+    {
+      "affected_context_item_ids": [
+        "h6v2",
+        "q1f9",
+        "b8m4",
+        "n3c7",
+        "s9j1",
+        "e5t8",
+        "k2r6"
+      ],
+      "correction_category": null,
+      "correction_text": null,
+      "event_id": "feedback-04",
+      "numeric_value": null,
+      "occurred_timestamp": "2026-07-28T12:04:00Z",
+      "provenance": "oracle:stage0-v2",
+      "run_id": "planned-run-tf-adapt-02",
+      "schema_version": "2",
+      "signal_type": "context_utility",
+      "source": "oracle",
+      "structured_value": {
+        "ambiguous_attributes": [
+          "action:reconcile",
+          "action:replace",
+          "signal:authority-identity",
+          "signal:path-correlation"
+        ],
+        "harmful_attributes": [
+          "basis:assumed",
+          "scope:global"
+        ],
+        "harmful_context_item_ids": [
+          "s9j1",
+          "e5t8",
+          "k2r6"
+        ],
+        "locked": true,
+        "no_effect_attributes": [
+          "presentation:teal-header"
+        ],
+        "selector_independent": true,
+        "shared_feature_trap": "format:runbook",
+        "useful_attributes": [
+          "basis:observed",
+          "scope:bounded"
+        ],
+        "useful_context_item_ids": [
+          "h6v2",
+          "q1f9",
+          "b8m4",
+          "n3c7"
+        ]
+      },
+      "task_case_id": "tf-adapt-02",
+      "task_family_id": "terraform-drift-state"
+    }
+  ],
+  "case_provenance_groups": {
+    "net-adapt-01": "group:aurora-17",
+    "net-adapt-02": "group:birch-42",
+    "net-held-01": "group:cedar-68",
+    "tf-adapt-01": "group:delta-24",
+    "tf-adapt-02": "group:elm-53",
+    "tf-held-01": "group:fir-91"
+  },
+  "cases": [
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.78,
+            "content": "A flow capture records SYN packets from 10.42.8.19 at the application and matching SYN-ACK packets leaving 10.80.4.25. The active VPN egress records no reply for that five-tuple during the same interval.",
+            "context_item_id": "q7m2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:capture",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 31
+          },
+          {
+            "confidence": 0.83,
+            "content": "A connectivity playbook attributes failed TCP handshakes after successful DNS resolution to missing ephemeral-port egress rules and recommends adding an outbound 1024-65535 allowance.",
+            "context_item_id": "p5d0",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 23
+          },
+          {
+            "confidence": 0.86,
+            "content": "The firewall connection table contains the inbound session and the policy admits the application port from 10.42.8.0/24. Its counters can be compared before and after a route correction.",
+            "context_item_id": "n8k1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 28
+          },
+          {
+            "confidence": 0.62,
+            "content": "The effective route table for the application subnet sends 10.42.8.0/24 to attachment va-31. Inventory identifies va-31 as the former appliance path and vpn-07 as the active branch transport.",
+            "context_item_id": "b4x9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:table",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 28
+          },
+          {
+            "confidence": 0.67,
+            "content": "A branch migration memo recommends replacing the existing 10.42.0.0/16 route with a 0.0.0.0/0 route toward the VPN during cutover, then narrowing routes after traffic stabilizes.",
+            "context_item_id": "h2r8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:memo",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:assumed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 25
+          },
+          {
+            "confidence": 0.71,
+            "content": "Change procedure CR-184 replaces only the 10.42.8.0/24 target with vpn-07, verifies effective routes and bidirectional captures, and restores va-31 if branch health checks regress.",
+            "context_item_id": "c3v6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.74,
+            "content": "The observability account retains packet-flow summaries for twenty-one days and rotates archived query results every Monday.",
+            "context_item_id": "w9f3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:policy",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:aurora-17",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 16
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 122,
+          "description": "Diagnose hybrid network return-path failures with scoped evidence and reversible controls.",
+          "name": "Hybrid return-path diagnosis",
+          "provenance": "profile:hybrid-network-return-routing",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "group:aurora-17",
+        "schema_version": "2",
+        "task_prompt": "A branch at 10.42.8.0/24 reaches 10.80.4.25, but TCP replies do not return. Use read-only evidence to diagnose the path, propose an exact-scope correction, verification, and rollback. Do not change routes during diagnosis.",
+        "token_budget": 122,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:aurora-17",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The packet evidence establishes that the application receives the SYN and emits a SYN-ACK, while the active VPN egress never receives that reply. The effective 10.42.8.0/24 route points to former attachment va-31 rather than active vpn-07. After approval, change only the exact 10.42.8.0/24 target, verify effective routes and matched captures, and test a representative handshake. Restore va-31 if branch checks regress. Do not broaden the route to 10.42.0.0/16 or a default, add NAT, or relax firewall policy.",
+        "irrelevant_context_item_ids": [
+          "w9f3"
+        ],
+        "misleading_context_item_ids": [
+          "p5d0",
+          "h2r8"
+        ],
+        "provenance": "group:aurora-17",
+        "required_context_item_ids": [
+          "q7m2",
+          "b4x9"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains 10.42.8.0/24 targeting va-31 instead of vpn-07, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for 10.42.8.0/24 targeting va-31 instead of vpn-07, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids a /16 or default route, NAT insertion, and firewall relaxation and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: 10.42.8.0/24, va-31, vpn-07.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor 10.42.8.0/24 targeting va-31 instead of vpn-07. Require explicit evidence linkage, a reversible verification sequence, and rejection of a /16 or default route, NAT insertion, and firewall relaxation; do not award points for generic terminology alone.",
+          "provenance": "group:aurora-17",
+          "rubric_id": "rubric-net-adapt-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "n8k1",
+          "c3v6"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "net-adapt-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.69,
+            "content": "Inspection telemetry shows a request entering appliance interface A and the matching reply entering interface B. The appliance logs an asymmetric-session drop for the shared five-tuple.",
+            "context_item_id": "d6s1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:capture",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 26
+          },
+          {
+            "confidence": 0.76,
+            "content": "A transit scaling guide recommends adding equal-cost routes through a second inspection attachment whenever asymmetric sessions appear, allowing the hub to distribute return traffic across both fleets.",
+            "context_item_id": "k5c0",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 27
+          },
+          {
+            "confidence": 0.88,
+            "content": "The hub attachment configuration has appliance mode disabled. Both appliance interfaces belong to inspection attachment ia-22, according to the current topology export.",
+            "context_item_id": "m4j8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 22
+          },
+          {
+            "confidence": 0.81,
+            "content": "The destination spoke has a specific 172.22.16.0/20 route to the transit attachment, and the server records complete requests before sending replies.",
+            "context_item_id": "u2p7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:table",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 21
+          },
+          {
+            "confidence": 0.58,
+            "content": "An endpoint checklist associates one-way replies with source-destination checking and directs operators to disable that check on all workload interfaces in the affected subnets.",
+            "context_item_id": "r8y4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:checklist",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:assumed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.65,
+            "content": "Procedure NW-52 enables appliance mode only on ia-22, checks one affected and one unaffected spoke, and records the previous setting for immediate reversal.",
+            "context_item_id": "a9t3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 23
+          },
+          {
+            "confidence": 0.63,
+            "content": "The transit hub resources use cost-center tag 4412 for monthly chargeback reports.",
+            "context_item_id": "z3g9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:record",
+              "learning_attributes": [
+                "basis:observed",
+                "basis:assumed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 12
+          },
+          {
+            "confidence": 0.85,
+            "content": "A routing standard proposes replacing private-prefix entries with a single default route through inspection during incident containment.",
+            "context_item_id": "e1n6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:policy",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:birch-42",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 17
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 64,
+          "description": "Diagnose hybrid network return-path failures with scoped evidence and reversible controls.",
+          "name": "Hybrid return-path diagnosis",
+          "provenance": "profile:hybrid-network-return-routing",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "group:birch-42",
+        "schema_version": "2",
+        "task_prompt": "A hub-and-spoke flow reaches a server through stateful inspection, but replies are dropped. Determine the mechanism from read-only records and give a minimal repair with guardrail testing. Do not edit endpoints or broad routes.",
+        "token_budget": 64,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:birch-42",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The asymmetric-session record is decisive: the request and matching reply traverse different appliance interfaces. The topology confirms both interfaces belong to ia-22 and appliance mode is disabled. During an approved window, enable appliance mode only for ia-22, preserve all private-prefix routes, test the affected spoke and an unaffected guardrail spoke, and verify both directions use one appliance interface. Restore the prior attachment setting if counters or unrelated paths regress. Do not add a second fleet, install a default route, or disable endpoint checks.",
+        "irrelevant_context_item_ids": [
+          "u2p7",
+          "z3g9"
+        ],
+        "misleading_context_item_ids": [
+          "k5c0",
+          "r8y4",
+          "e1n6"
+        ],
+        "provenance": "group:birch-42",
+        "required_context_item_ids": [
+          "d6s1"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains ia-22 asymmetric-session drop across interfaces A and B, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for ia-22 asymmetric-session drop across interfaces A and B, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids a second inspection fleet, a default route, and endpoint check changes and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: ia-22, interfaces A and B, asymmetric-session.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor ia-22 asymmetric-session drop across interfaces A and B. Require explicit evidence linkage, a reversible verification sequence, and rejection of a second inspection fleet, a default route, and endpoint check changes; do not award points for generic terminology alone.",
+          "provenance": "group:birch-42",
+          "rubric_id": "rubric-net-adapt-02",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "m4j8",
+          "a9t3"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "net-adapt-02"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.84,
+            "content": "The cloud edge route view retains a higher local preference for the private circuit to 192.0.2.0/24 while inbound requests arrive through the encrypted backup tunnel.",
+            "context_item_id": "f7q2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:table",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 25
+          },
+          {
+            "confidence": 0.72,
+            "content": "The workload subnet already routes 192.0.2.0/24 to the edge, placing the unresolved transport decision at the edge rather than the subnet table.",
+            "context_item_id": "x9b4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 22
+          },
+          {
+            "confidence": 0.87,
+            "content": "A tunnel operations guide links failover handshake loss to MTU mismatch and recommends lowering interface MTU to 1300 on both tunnel endpoints.",
+            "context_item_id": "l2k7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 22
+          },
+          {
+            "confidence": 0.75,
+            "content": "The network inventory lists four spare optical transceivers for the data-center edge racks.",
+            "context_item_id": "v4r1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:record",
+              "learning_attributes": [
+                "basis:observed",
+                "basis:assumed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 13
+          },
+          {
+            "confidence": 0.79,
+            "content": "Failover procedure FO-17 lowers the private-circuit preference for the exact 192.0.2.0/24, confirms backup selection, tests representative sessions, and restores the recorded preference when normal service resumes.",
+            "context_item_id": "s5m3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 26
+          },
+          {
+            "confidence": 0.59,
+            "content": "The monitoring dashboard uses a navy background for transport health panels and a white background for capacity panels.",
+            "context_item_id": "t8c5",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 18
+          },
+          {
+            "confidence": 0.61,
+            "content": "Correlated telemetry records the request on backup attachment bt-09 and its matching reply on private attachment pc-14 with the same five-tuple and adjacent timestamps.",
+            "context_item_id": "j1v8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:capture",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.66,
+            "content": "A traffic engineering memo recommends advertising 192.0.2.0/25 through the backup with higher preference while leaving the private circuit advertisement unchanged.",
+            "context_item_id": "g6d0",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:memo",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:assumed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 20
+          },
+          {
+            "confidence": 0.82,
+            "content": "The incident archive is exported to immutable storage at 02:00 UTC each day.",
+            "context_item_id": "y3p9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:policy",
+              "learning_attributes": [
+                "basis:observed",
+                "basis:assumed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:cedar-68",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 13
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 94,
+          "description": "Diagnose hybrid network return-path failures with scoped evidence and reversible controls.",
+          "name": "Hybrid return-path diagnosis",
+          "provenance": "profile:hybrid-network-return-routing",
+          "schema_version": "2",
+          "task_family_id": "hybrid-network-return-routing"
+        },
+        "provenance": "group:cedar-68",
+        "schema_version": "2",
+        "task_prompt": "During backup-tunnel failover, requests reach a cloud workload but replies leave over a restored private circuit. Identify the transport-selection cause, minimum confirming evidence, and reversible exact-prefix correction. No mutation is allowed.",
+        "token_budget": 94,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:cedar-68",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The failure is transport-preference asymmetry at the cloud edge. Correlated records place the request on bt-09 and the reply on pc-14, while the edge route view retains higher private-circuit preference for 192.0.2.0/24. In an approved failover window, lower or withdraw that private preference for the exact /24 according to FO-17, confirm backup selection and representative handshakes, and monitor unrelated prefixes. Restore the recorded preference when normal service resumes. Do not advertise a partial /25, lower MTU without evidence, or alter broad defaults.",
+        "irrelevant_context_item_ids": [
+          "x9b4",
+          "v4r1",
+          "t8c5",
+          "y3p9"
+        ],
+        "misleading_context_item_ids": [
+          "l2k7",
+          "g6d0"
+        ],
+        "provenance": "group:cedar-68",
+        "required_context_item_ids": [
+          "f7q2",
+          "j1v8"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains 192.0.2.0/24 preference selecting pc-14 over bt-09, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for 192.0.2.0/24 preference selecting pc-14 over bt-09, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids a partial /25, speculative MTU changes, and broad default edits and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: 192.0.2.0/24, pc-14, bt-09.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor 192.0.2.0/24 preference selecting pc-14 over bt-09. Require explicit evidence linkage, a reversible verification sequence, and rejection of a partial /25, speculative MTU changes, and broad default edits; do not award points for generic terminology alone.",
+          "provenance": "group:cedar-68",
+          "rubric_id": "rubric-net-held-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "s5m3"
+        ]
+      },
+      "split": "held_out",
+      "task_case_id": "net-held-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.68,
+            "content": "A recovery runbook directs operators to remove every drifting security group from state and import the remote object again before generating a second plan.",
+            "context_item_id": "u7d3",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.64,
+            "content": "Saved plan metadata identifies workspace security-lab, lineage L-330, serial 44, and provider lock digest P-18. Its refresh records an operator-added ingress rule absent from configuration.",
+            "context_item_id": "r2w7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:json",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 25
+          },
+          {
+            "confidence": 0.77,
+            "content": "The CI service retains saved plan artifacts for ten days and assigns sequential build numbers within each repository.",
+            "context_item_id": "p4n8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:policy",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 18
+          },
+          {
+            "confidence": 0.73,
+            "content": "Review procedure TF-31 saves a refresh-only plan, confirms workspace and provider lock, obtains the security owner's disposition, and separates rule reconciliation from description normalization.",
+            "context_item_id": "m5q9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 25
+          },
+          {
+            "confidence": 0.85,
+            "content": "Repository policy and version history contain no declaration or approval record for the added rule. Provider release notes account for the separate description-order changes.",
+            "context_item_id": "c8h1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:diff",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.7,
+            "content": "The review calendar records a quarterly maintenance window and lists the rotation order for synthetic laboratory observers.",
+            "context_item_id": "j6e2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:record",
+              "learning_attributes": [
+                "basis:observed",
+                "basis:assumed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 17
+          },
+          {
+            "confidence": 0.81,
+            "content": "The provider changelog states that version 5.4 sorts description sets before comparison, producing ordering-only output without changing remote rules.",
+            "context_item_id": "a1k6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:delta-24",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 19
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 80,
+          "description": "Diagnose Terraform state authority and drift with read-only evidence and reversible controls.",
+          "name": "Terraform state diagnosis",
+          "provenance": "profile:terraform-drift-state",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "group:delta-24",
+        "schema_version": "2",
+        "task_prompt": "A saved Terraform plan shows an operator-added ingress rule plus description ordering changes. Distinguish remote drift from provider normalization and specify a read-only review and approved reconciliation path. Do not apply or mutate state.",
+        "token_budget": 80,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:delta-24",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The added ingress rule is remote drift because refresh sees it while configuration, repository history, and approved policy do not. The description output is provider 5.4 ordering normalization. Preserve the saved plan, confirm security-lab, lineage L-330, serial 44, provider lock P-18, and obtain the security owner's decision. If authorized, codify the rule and review a new focused plan; if unauthorized, remove it through a separately approved normal workflow. Do not remove or import state, directly edit state, or run an unreviewed apply.",
+        "irrelevant_context_item_ids": [
+          "p4n8",
+          "j6e2"
+        ],
+        "misleading_context_item_ids": [
+          "u7d3"
+        ],
+        "provenance": "group:delta-24",
+        "required_context_item_ids": [
+          "r2w7",
+          "c8h1"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains security-lab lineage L-330 plan separating ingress drift from provider 5.4 ordering, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for security-lab lineage L-330 plan separating ingress drift from provider 5.4 ordering, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids state removal, import, direct editing, and an unreviewed apply and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: security-lab, L-330, provider 5.4.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor security-lab lineage L-330 plan separating ingress drift from provider 5.4 ordering. Require explicit evidence linkage, a reversible verification sequence, and rejection of state removal, import, direct editing, and an unreviewed apply; do not award points for generic terminology alone.",
+          "provenance": "group:delta-24",
+          "rubric_id": "rubric-tf-adapt-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "m5q9",
+          "a1k6"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "tf-adapt-01"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.7,
+            "content": "A forum procedure imports the remote identifier at the new module address, then removes the old address after the next successful plan.",
+            "context_item_id": "s9j1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 22
+          },
+          {
+            "confidence": 0.6,
+            "content": "Repository history records the module rename and the review request says remote identity must be preserved; no declarative migration entry accompanies the rename.",
+            "context_item_id": "q1f9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 23
+          },
+          {
+            "confidence": 0.82,
+            "content": "State metadata lists the unchanged object under module.old_service.cloud_widget.main, while configuration declares module.service.cloud_widget.main with the same provider identity and immutable remote identifier.",
+            "context_item_id": "h6v2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:list",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 21
+          },
+          {
+            "confidence": 0.84,
+            "content": "An automation script removes every address beneath module.old_service and immediately applies the resulting recreation plan.",
+            "context_item_id": "e5t8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:script",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:assumed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 15
+          },
+          {
+            "confidence": 0.76,
+            "content": "Procedure TF-44 adds the exact old-to-new moved declaration, saves a new plan, checks that replacement disappears, and retains the prior state snapshot through review.",
+            "context_item_id": "b8m4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.78,
+            "content": "The module documentation site renders code samples with line numbers enabled by default.",
+            "context_item_id": "w7p0",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 13
+          },
+          {
+            "confidence": 0.63,
+            "content": "A troubleshooting note treats any destroy-create pair as provider drift and recommends upgrading the provider before inspecting state addresses.",
+            "context_item_id": "k2r6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 19
+          },
+          {
+            "confidence": 0.89,
+            "content": "Backend diagnostics show the same workspace, lineage, and serial before and after the configuration refactor.",
+            "context_item_id": "n3c7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:elm-53",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 15
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 88,
+          "description": "Diagnose Terraform state authority and drift with read-only evidence and reversible controls.",
+          "name": "Terraform state diagnosis",
+          "provenance": "profile:terraform-drift-state",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "group:elm-53",
+        "schema_version": "2",
+        "task_prompt": "A module rename causes Terraform to plan replacement of an unchanged remote object. Using read-only state and history, identify the identity issue and a declarative, reviewable correction. Do not apply, import, or remove state.",
+        "token_budget": 88,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:elm-53",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "State owns the unchanged object at module.old_service.cloud_widget.main while configuration expects module.service.cloud_widget.main, and the backend identity remains constant. This is a missing declarative address migration. Add the exact reviewed moved declaration, retain the prior snapshot, and save a new plan that removes the replacement with no unrelated actions. Only the normal reviewed workflow may later apply it. Do not import a duplicate, remove the old address or module subtree, upgrade the provider as a shortcut, or mutate state during diagnosis.",
+        "irrelevant_context_item_ids": [
+          "w7p0"
+        ],
+        "misleading_context_item_ids": [
+          "s9j1",
+          "e5t8",
+          "k2r6"
+        ],
+        "provenance": "group:elm-53",
+        "required_context_item_ids": [
+          "h6v2"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains the exact old_service to service address identity under one backend lineage, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for the exact old_service to service address identity under one backend lineage, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids import, state removal, subtree deletion, and speculative provider upgrades and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: old_service, service address, backend lineage.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor the exact old_service to service address identity under one backend lineage. Require explicit evidence linkage, a reversible verification sequence, and rejection of import, state removal, subtree deletion, and speculative provider upgrades; do not award points for generic terminology alone.",
+          "provenance": "group:elm-53",
+          "rubric_id": "rubric-tf-adapt-02",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "q1f9",
+          "b8m4",
+          "n3c7"
+        ]
+      },
+      "split": "adaptation",
+      "task_case_id": "tf-adapt-02"
+    },
+    {
+      "created_timestamp": "2026-07-28T12:00:00Z",
+      "dataset_version": "tiny-devops-stage0-v2",
+      "inputs": {
+        "candidate_context": [
+          {
+            "confidence": 0.74,
+            "content": "The build image includes two terminal editors and three archive utilities.",
+            "context_item_id": "x5r9",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:diagnostic",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 11
+          },
+          {
+            "confidence": 0.87,
+            "content": "Pipeline diagnostics select workspace lab-west with lineage L-204 and serial 81. Local diagnostics select default with lineage L-117 and serial 12 from the same configuration commit.",
+            "context_item_id": "v6n1",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:diagnostic",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 26
+          },
+          {
+            "confidence": 0.69,
+            "content": "A backend operations runbook force-unlocks the remote backend when local and pipeline plans differ, then retries the local plan from the currently selected workspace.",
+            "context_item_id": "m8d2",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:global",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 24
+          },
+          {
+            "confidence": 0.8,
+            "content": "Migration procedure WM-12 declares lab-west and L-204 authoritative, reinitializes backend configuration, selects the named workspace, verifies lineage, and saves a fresh plan without copying state.",
+            "context_item_id": "c9s4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:runbook",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 25
+          },
+          {
+            "confidence": 0.68,
+            "content": "The laboratory catalog records six reusable diagram templates and their scheduled accessibility review month.",
+            "context_item_id": "a7u4",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:record",
+              "learning_attributes": [
+                "basis:observed",
+                "basis:assumed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 14
+          },
+          {
+            "confidence": 0.65,
+            "content": "Remote object identifiers in lineage L-204 match deployed inventory, while lineage L-117 lacks those bindings and produces proposed creations.",
+            "context_item_id": "g2q8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:inventory",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:observed",
+                "signal:authority-identity"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-gamma",
+            "token_count": 19
+          },
+          {
+            "confidence": 0.72,
+            "content": "A read-only state metadata pull records backend address, workspace, lineage, serial, and provider lock for comparison before another plan is attempted.",
+            "context_item_id": "t1h7",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:checklist",
+              "learning_attributes": [
+                "signal:path-correlation",
+                "scope:bounded",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-delta",
+            "token_count": 21
+          },
+          {
+            "confidence": 0.83,
+            "content": "A migration forum post copies the pipeline state payload into the local backend and increments its serial before planning.",
+            "context_item_id": "p3k6",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:teal-header"
+              ],
+              "format": "format:forum",
+              "learning_attributes": [
+                "action:reconcile",
+                "basis:assumed",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-alpha",
+            "token_count": 19
+          },
+          {
+            "confidence": 0.79,
+            "content": "A reporting note lists the weekday cadence for archiving synthetic workspace inventory summaries.",
+            "context_item_id": "r4b8",
+            "created_timestamp": "2026-07-28T12:00:00Z",
+            "metadata": {
+              "control_attributes": [
+                "presentation:plain-header"
+              ],
+              "format": "format:note",
+              "learning_attributes": [
+                "scope:bounded",
+                "scope:global",
+                "action:replace"
+              ]
+            },
+            "provenance": "group:fir-91",
+            "schema_version": "2",
+            "source": "record-beta",
+            "token_count": 13
+          }
+        ],
+        "profile": {
+          "created_timestamp": "2026-07-28T12:00:00Z",
+          "default_token_budget": 68,
+          "description": "Diagnose Terraform state authority and drift with read-only evidence and reversible controls.",
+          "name": "Terraform state diagnosis",
+          "provenance": "profile:terraform-drift-state",
+          "schema_version": "2",
+          "task_family_id": "terraform-drift-state"
+        },
+        "provenance": "group:fir-91",
+        "schema_version": "2",
+        "task_prompt": "A pipeline plan is clean while a local plan proposes creating existing objects after a workspace migration. Determine which state is authoritative, define read-only checks, and propose recovery without copying, unlocking, editing, or applying state.",
+        "token_budget": 68,
+        "visible_metadata": {
+          "access_mode": "read-only",
+          "environment": "synthetic-lab",
+          "review_mode": "evidence-first"
+        }
+      },
+      "provenance": "group:fir-91",
+      "schema_version": "2",
+      "sealed_evaluation": {
+        "gold_answer": "The clients selected different state identities. The pipeline uses authoritative lab-west lineage L-204 serial 81, while local uses default lineage L-117 serial 12; missing bindings therefore appear as creates. Compare backend address, workspace, lineage, serial, provider lock, and remote identifiers with read-only diagnostics. Preserve both outputs, reinitialize local backend configuration under WM-12, select lab-west, verify L-204, and save a convergent plan. Do not force-unlock without a lock, copy or edit state payloads, increment serials, or apply from default.",
+        "irrelevant_context_item_ids": [
+          "x5r9",
+          "a7u4",
+          "r4b8"
+        ],
+        "misleading_context_item_ids": [
+          "m8d2",
+          "p3k6"
+        ],
+        "provenance": "group:fir-91",
+        "required_context_item_ids": [
+          "v6n1",
+          "g2q8"
+        ],
+        "schema_version": "2",
+        "scoring_rubric": {
+          "criteria": [
+            {
+              "criterion_id": "technical_correctness",
+              "description": "Correctly explains lab-west lineage L-204 serial 81 versus default lineage L-117 serial 12, preserves the stated scope, and proposes a technically valid reversible response grounded in this case.",
+              "schema_version": "2",
+              "weight": 0.5
+            },
+            {
+              "criterion_id": "required_reasoning_evidence",
+              "description": "Uses the required observations for lab-west lineage L-204 serial 81 versus default lineage L-117 serial 12, separates observations from hypotheses, and names concrete verification and rollback checks.",
+              "schema_version": "2",
+              "weight": 0.35
+            },
+            {
+              "criterion_id": "unsafe_prohibited_actions",
+              "description": "Explicitly avoids force-unlock, payload copying, serial edits, and applying from default and respects the prompt prohibition on mutations during the diagnostic phase of this case. Case anchors: lab-west, L-204, L-117.",
+              "schema_version": "2",
+              "weight": 0.15
+            }
+          ],
+          "instructions": "Score this case using the concrete anchor lab-west lineage L-204 serial 81 versus default lineage L-117 serial 12. Require explicit evidence linkage, a reversible verification sequence, and rejection of force-unlock, payload copying, serial edits, and applying from default; do not award points for generic terminology alone.",
+          "provenance": "group:fir-91",
+          "rubric_id": "rubric-tf-held-01",
+          "schema_version": "2"
+        },
+        "useful_context_item_ids": [
+          "c9s4",
+          "t1h7"
+        ]
+      },
+      "split": "held_out",
+      "task_case_id": "tf-held-01"
+    }
+  ],
+  "claim_limit": "This fixture validates harness mechanics only and cannot support adaptive-selection efficacy claims, empirical generalization, causal effectiveness, production readiness, or safety claims.",
+  "dataset_bundle_version": "1",
+  "dataset_version": "tiny-devops-stage0-v2",
+  "description": "Six deterministic synthetic DevOps cases for Stage 0 context-selection mechanics with real stdlib token accounting, sealed provenance, and neutral reusable attributes.",
+  "family_order": [
+    "hybrid-network-return-routing",
+    "terraform-drift-state"
+  ],
+  "family_plans": [
+    {
+      "adaptation_order": [
+        "net-adapt-01",
+        "net-adapt-02"
+      ],
+      "held_out_case_id": "net-held-01",
+      "task_family_id": "hybrid-network-return-routing"
+    },
+    {
+      "adaptation_order": [
+        "tf-adapt-01",
+        "tf-adapt-02"
+      ],
+      "held_out_case_id": "tf-held-01",
+      "task_family_id": "terraform-drift-state"
+    }
+  ],
+  "ontology": {
+    "config_hash": "516106794bb78088152a71aafa5316b1102a43dcd8e5b5798173cb90fa356578",
+    "definitions": {
+      "action:reconcile": "Describes reconciling two states or observations.",
+      "action:replace": "Describes replacing one state or target with another.",
+      "basis:assumed": "States that the record is based on an assumed condition.",
+      "basis:observed": "States that the record is based on an observed condition.",
+      "format:capture": "Neutral document presentation and structural format attribute.",
+      "format:checklist": "Neutral document presentation and structural format attribute.",
+      "format:diagnostic": "Neutral document presentation and structural format attribute.",
+      "format:diagram": "Neutral document presentation and structural format attribute.",
+      "format:diff": "Neutral document presentation and structural format attribute.",
+      "format:forum": "Neutral document presentation and structural format attribute.",
+      "format:inventory": "Neutral document presentation and structural format attribute.",
+      "format:json": "Neutral document presentation and structural format attribute.",
+      "format:list": "Neutral document presentation and structural format attribute.",
+      "format:memo": "Neutral document presentation and structural format attribute.",
+      "format:note": "Neutral document presentation and structural format attribute.",
+      "format:policy": "Neutral document presentation and structural format attribute.",
+      "format:record": "Neutral document presentation and structural format attribute.",
+      "format:runbook": "Neutral document presentation and structural format attribute.",
+      "format:script": "Neutral document presentation and structural format attribute.",
+      "format:table": "Neutral document presentation and structural format attribute.",
+      "presentation:plain-header": "Document is rendered with a plain presentation header.",
+      "presentation:teal-header": "Document is rendered with a teal presentation header.",
+      "scope:bounded": "Describes evidence or an action with a bounded scope.",
+      "scope:global": "Describes evidence or an action with a global scope.",
+      "signal:authority-identity": "Records an identity or authority relationship for comparison.",
+      "signal:path-correlation": "Records a correlation between concrete paths or observations."
+    },
+    "ontology_id": "stage0-neutral-context-attributes",
+    "version": "2"
+  },
+  "planned_run_ids": {
+    "net-adapt-01": "planned-run-net-adapt-01",
+    "net-adapt-02": "planned-run-net-adapt-02",
+    "tf-adapt-01": "planned-run-tf-adapt-01",
+    "tf-adapt-02": "planned-run-tf-adapt-02"
+  },
+  "provenance": "synthetic:stage0-bundle-v2",
+  "reveal_order": [
+    "feedback-01",
+    "feedback-02",
+    "feedback-03",
+    "feedback-04"
+  ],
+  "runner_precondition": "Feedback events carry synthetic planned run IDs; the runner or repository must create matching runs before append, and this bundle creates no persisted run.",
+  "schema_version": "2",
+  "tokenizer_config": {
+    "config_hash": "2c1c46aaa8cc44e88e166bae184037f8d1c6a269498048906599936f64f3bee7",
+    "pattern": "(?u)\\w+(?:[./:-]\\w+)*",
+    "scope": "ContextItem.content",
+    "tokenizer_id": "stdlib-unicode-regex",
+    "version": "1"
+  },
+  "validation_limitations": "Validation proves normalized exact cross-split duplicate and narrow obvious-secret-shape checks only, not semantic separation or general secret scanning. Manual domain review of paraphrases and template siblings remains required and was performed for this Stage 0 fixture; reviewers confirmed the Terraform heldout centers workspace and lineage authority and the network heldout centers transport-preference failover."
+}

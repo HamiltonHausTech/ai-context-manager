@@ -1,0 +1,20 @@
+{
+  "candidate_set_hash": "sha256:candidates",
+  "decided_timestamp": "2026-07-28T12:01:00Z",
+  "decision_id": "decision-v1",
+  "decision_latency_ms": 12.5,
+  "provenance": "fixture:unreleased-v1",
+  "ranking_artifact_hash": null,
+  "ranking_artifact_reference": null,
+  "run_id": "run-v1",
+  "schema_version": "1",
+  "selected_context_item_ids": ["policy"],
+  "selected_token_counts": [8],
+  "selector_input_hash": "sha256:selector-input",
+  "selector_score": 0.8,
+  "task_case_id": "case-v1",
+  "token_budget": 40,
+  "total_selected_tokens": 8,
+  "trace_artifact_hash": null,
+  "trace_artifact_reference": null
+}

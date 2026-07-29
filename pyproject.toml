@@ -89,7 +89,7 @@ Changelog = "https://github.com/ai-context-manager/ai-context-manager/blob/main/
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ai_context_manager*", "bourbon_research*"]
+include = ["ai_context_manager*", "bourbon_research*", "experiments*"]
 
 [tool.setuptools.package-data]
 "ai_context_manager" = ["py.typed"]
