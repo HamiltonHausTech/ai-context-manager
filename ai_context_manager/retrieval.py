@@ -37,9 +37,13 @@ class RetrievalRequest:
             raise ValueError("Token budget must be positive")
         if self.include_tags is not None and not isinstance(self.include_tags, list):
             raise ValueError("include_tags must be a list")
-        if self.component_types is not None and not isinstance(self.component_types, list):
+        if self.component_types is not None and not isinstance(
+            self.component_types, list
+        ):
             raise ValueError("component_types must be a list")
-        if self.required_terms is not None and not isinstance(self.required_terms, list):
+        if self.required_terms is not None and not isinstance(
+            self.required_terms, list
+        ):
             raise ValueError("required_terms must be a list")
         if self.tag_match_mode not in ("any", "all"):
             raise ValueError("tag_match_mode must be 'any' or 'all'")
@@ -49,9 +53,14 @@ class RetrievalRequest:
             raise ValueError("redundancy_threshold must be between 0 and 1")
         if self.max_components is not None and self.max_components <= 0:
             raise ValueError("max_components must be positive")
-        if any(weight < 0 for weight in (
-            self.relevance_weight, self.importance_weight, self.recency_weight
-        )):
+        if any(
+            weight < 0
+            for weight in (
+                self.relevance_weight,
+                self.importance_weight,
+                self.recency_weight,
+            )
+        ):
             raise ValueError("retrieval weights cannot be negative")
         if self.query and (
             self.relevance_weight + self.importance_weight + self.recency_weight <= 0
@@ -115,21 +124,60 @@ class RetrievalPipeline:
         score_component: Callable[[ContextComponent], float],
         summarizer: Optional[Summarizer] = None,
         relevance_component: Optional[Callable[[str, ContextComponent], float]] = None,
+        token_counter: Optional[Callable[[ContextComponent, str], int]] = None,
     ):
         self.score_component = score_component
         self.summarizer = summarizer
         self.relevance_component = relevance_component
+        self.token_counter = token_counter
+
+    def _count_tokens(self, component: ContextComponent, content: str) -> int:
+        """Count tokens, allowing callers with authoritative accounting to opt in."""
+        count = (
+            self.token_counter(component, content)
+            if self.token_counter is not None
+            else estimate_tokens(content)
+        )
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise ValueError("token counter must return a nonnegative integer")
+        return count
 
     _STOP_WORDS = {
-        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-        "how", "in", "is", "it", "of", "on", "or", "that", "the", "this",
-        "to", "was", "what", "when", "where", "which", "who", "with",
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "how",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "this",
+        "to",
+        "was",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "with",
     }
 
     @classmethod
     def _terms(cls, text: str) -> set[str]:
         return {
-            term for term in re.findall(r"[a-z0-9]+", (text or "").lower())
+            term
+            for term in re.findall(r"[a-z0-9]+", (text or "").lower())
             if len(term) > 1 and term not in cls._STOP_WORDS
         }
 
@@ -170,7 +218,10 @@ class RetrievalPipeline:
                 request.include_tags, request.tag_match_mode
             ):
                 reason = "tag_filter"
-            elif request.component_types and component.__class__.__name__ not in request.component_types:
+            elif (
+                request.component_types
+                and component.__class__.__name__ not in request.component_types
+            ):
                 reason = "type_filter"
             elif (
                 request.task_id is not None
@@ -190,7 +241,9 @@ class RetrievalPipeline:
         return candidates, decisions
 
     def rank_candidates(
-        self, components: Sequence[ContextComponent], request: Optional[RetrievalRequest] = None
+        self,
+        components: Sequence[ContextComponent],
+        request: Optional[RetrievalRequest] = None,
     ) -> List[tuple]:
         request = request or RetrievalRequest()
         scored = []
@@ -205,7 +258,9 @@ class RetrievalPipeline:
                     relevance = (
                         self.relevance_component(request.query, component)
                         if self.relevance_component
-                        else self.lexical_relevance(request.query, component.get_content())
+                        else self.lexical_relevance(
+                            request.query, component.get_content()
+                        )
                     )
                     relevance = max(0.0, min(1.0, float(relevance)))
                 except Exception:
@@ -243,27 +298,36 @@ class RetrievalPipeline:
         request: RetrievalRequest,
         initial_decisions: Optional[List[RetrievalDecision]] = None,
     ) -> RetrievalResult:
-        result = RetrievalResult(request=request, decisions=list(initial_decisions or []))
+        result = RetrievalResult(
+            request=request, decisions=list(initial_decisions or [])
+        )
         selected_content = []
         for ranked_item in ranked:
             component, score = ranked_item[:2]
             factors = ranked_item[2] if len(ranked_item) > 2 else {}
             try:
                 content = component.get_content()
-                token_count = estimate_tokens(content)
+                token_count = self._count_tokens(component, content)
                 summarized = False
                 if request.required_terms:
                     content_terms = self._terms(content)
                     required = {
-                        term for value in request.required_terms for term in self._terms(value)
+                        term
+                        for value in request.required_terms
+                        for term in self._terms(value)
                     }
                     required_match = bool(required & content_terms)
                     factors["required_match"] = 1.0 if required_match else 0.0
                     if not required_match:
                         result.decisions.append(
                             RetrievalDecision(
-                                component.id, component.__class__.__name__, False,
-                                "required_term_miss", score, token_count, factors,
+                                component.id,
+                                component.__class__.__name__,
+                                False,
+                                "required_term_miss",
+                                score,
+                                token_count,
+                                factors,
                             )
                         )
                         continue
@@ -271,8 +335,13 @@ class RetrievalPipeline:
                 if relevance is not None and relevance < request.min_relevance:
                     result.decisions.append(
                         RetrievalDecision(
-                            component.id, component.__class__.__name__, False,
-                            "below_relevance_threshold", score, token_count, factors,
+                            component.id,
+                            component.__class__.__name__,
+                            False,
+                            "below_relevance_threshold",
+                            score,
+                            token_count,
+                            factors,
                         )
                     )
                     continue
@@ -282,16 +351,29 @@ class RetrievalPipeline:
                 ):
                     result.decisions.append(
                         RetrievalDecision(
-                            component.id, component.__class__.__name__, False,
-                            "redundant", score, token_count, factors,
+                            component.id,
+                            component.__class__.__name__,
+                            False,
+                            "redundant",
+                            score,
+                            token_count,
+                            factors,
                         )
                     )
                     continue
-                if request.max_components is not None and len(result.items) >= request.max_components:
+                if (
+                    request.max_components is not None
+                    and len(result.items) >= request.max_components
+                ):
                     result.decisions.append(
                         RetrievalDecision(
-                            component.id, component.__class__.__name__, False,
-                            "max_components", score, token_count, factors,
+                            component.id,
+                            component.__class__.__name__,
+                            False,
+                            "max_components",
+                            score,
+                            token_count,
+                            factors,
                         )
                     )
                     continue
@@ -332,11 +414,13 @@ class RetrievalPipeline:
                         f"Current task: {request.query}\n"
                         "Compress the following while retaining only information useful "
                         f"to the current task:\n\n{content}"
-                        if request.query else content
+                        if request.query
+                        else content
                     )
                     content = self.summarizer.summarize(compression_input, remaining)
-                    content = truncate_to_token_budget(content, remaining)
-                    token_count = estimate_tokens(content)
+                    if self.token_counter is None:
+                        content = truncate_to_token_budget(content, remaining)
+                    token_count = self._count_tokens(component, content)
                     summarized = True
                     if not content or token_count > remaining:
                         result.decisions.append(
