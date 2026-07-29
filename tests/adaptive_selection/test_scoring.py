@@ -1,4 +1,5 @@
-from dataclasses import FrozenInstanceError
+import copy
+from dataclasses import FrozenInstanceError, dataclass, replace
 from inspect import signature
 
 import pytest
@@ -7,9 +8,11 @@ from experiments.adaptive_selection.schema import RubricCriterion, ScoringRubric
 from experiments.adaptive_selection.scoring import (
     BlindedAssessment,
     CorrectionAssessment,
+    EvidenceSpan,
     FindingAssessment,
     NegativeFindingSpec,
     RequiredStepSpec,
+    ScoringResult,
     StepAssessment,
     TaskScoringSpec,
     score_assessment,
@@ -60,7 +63,7 @@ def spec(**changes):
 
 
 def evidence(text="observed in frozen response"):
-    return {"quote": text, "locations": [{"start": 0, "end": 8}]}
+    return (EvidenceSpan(0, len(text), text),)
 
 
 def assessment(
@@ -79,7 +82,7 @@ def assessment(
             StepAssessment(
                 step_id,
                 status,
-                evidence(step_id) if status in {"met", "contradicted"} else {},
+                evidence(step_id) if status in {"met", "contradicted"} else (),
             )
             for step_id, status in zip(step_ids, step_statuses)
         )
@@ -88,7 +91,7 @@ def assessment(
             FindingAssessment(
                 finding_id,
                 status,
-                evidence(finding_id) if status == "present" else {},
+                evidence(finding_id) if status == "present" else (),
             )
             for finding_id, status in zip(finding_ids, finding_statuses)
         )
@@ -188,7 +191,7 @@ def test_exact_correspondence_coverage_and_assessment_rule_sets():
         ),
         (
             "step_assessments",
-            valid.step_assessments[:-1] + (StepAssessment("unknown", "not_met", {}),),
+            valid.step_assessments[:-1] + (StepAssessment("unknown", "not_met", ()),),
             "step assessment IDs",
         ),
         (
@@ -220,6 +223,10 @@ def test_unresolved_needs_adjudication_and_interprets_no_rules():
     assert result.base_quality is None
     assert result.triggered_deductions == result.triggered_caps == ()
     assert result.unresolved_rule_ids == ("explain", "danger")
+    assert result.rubric == rubric()
+    assert result.spec == spec()
+    assert result.assessment.step_assessments[0].status == "unresolved"
+    assert result.raw_score_decimal is result.normalized_score_decimal is None
 
 
 def test_permutation_invariance_canonical_hashes_and_timestamp_identity():
@@ -255,10 +262,9 @@ def test_permutation_invariance_canonical_hashes_and_timestamp_identity():
 
 def test_recursive_immutability_and_tampered_records_are_rejected():
     item = assessment().step_assessments[0]
-    with pytest.raises(TypeError):
-        item.supporting_evidence["quote"] = "changed"
-    with pytest.raises(TypeError):
-        item.supporting_evidence["locations"][0]["start"] = 4
+    assert isinstance(item.supporting_evidence, tuple)
+    with pytest.raises(FrozenInstanceError):
+        item.supporting_evidence[0].quote = "changed"
     with pytest.raises(FrozenInstanceError):
         item.status = "not_met"
 
@@ -287,13 +293,15 @@ def test_invalid_values_are_rejected():
     with pytest.raises(ValueError, match="status"):
         StepAssessment("s", "yes", evidence())
     with pytest.raises(ValueError, match="supporting_evidence"):
-        StepAssessment("s", "met", {})
+        StepAssessment("s", "met", ())
     with pytest.raises(ValueError, match="supporting_evidence"):
-        FindingAssessment("f", "present", {})
+        FindingAssessment("f", "present", ())
     with pytest.raises(ValueError, match="assessment_timestamp"):
         assessment(timestamp="2026-07-29 10:00:00+00:00")
-    with pytest.raises(ValueError, match="unsupported JSON"):
-        StepAssessment("s", "met", {"bad": object()})
+    with pytest.raises(ValueError, match="EvidenceSpan"):
+        StepAssessment(
+            "s", "met", ({"start_offset": 0, "end_offset": 1, "quote": "x"},)
+        )
 
 
 def test_api_is_structurally_blinded_and_poor_assessment_stays_poor():
@@ -345,3 +353,227 @@ def test_artifact_round_trips_and_contains_complete_arithmetic():
     }
     assert payload["engine_version"] == "deterministic-blinded-v1"
     assert type(result).from_dict(payload) == result
+
+
+@pytest.mark.parametrize(
+    "smuggled",
+    [
+        {"mode": "adaptive"},
+        {"arm": "treatment"},
+        {"policy": "secret"},
+        {"selected_context": ["ctx-1"]},
+        {"selectionPolicy": "top-k"},
+        {"nested": {"selector_mode": "adaptive"}},
+    ],
+)
+def test_evidence_span_structurally_rejects_metadata_smuggling(smuggled):
+    payload = {"start_offset": 0, "end_offset": 1, "quote": "x"}
+    payload.update(smuggled)
+    with pytest.raises(ValueError, match="invalid EvidenceSpan payload"):
+        EvidenceSpan.from_dict(payload)
+    with pytest.raises(ValueError, match="EvidenceSpan"):
+        StepAssessment("s", "met", (payload,))
+
+
+def test_evidence_span_bounds_and_status_evidence_exclusivity():
+    for values in ((-1, 1, "x"), (0, 0, "x"), (2, 1, "x"), (0, 1, "")):
+        with pytest.raises(ValueError):
+            EvidenceSpan(*values)
+    for status in ("not_met", "unresolved"):
+        with pytest.raises(ValueError, match="must be empty"):
+            StepAssessment("s", status, evidence())
+    for status in ("absent", "unresolved"):
+        with pytest.raises(ValueError, match="must be empty"):
+            FindingAssessment("f", status, evidence())
+    with pytest.raises(ValueError, match="nonempty"):
+        CorrectionAssessment("c", "description", ())
+
+
+def test_result_is_complete_canonical_and_recursively_immutable():
+    source = assessment(
+        steps=tuple(reversed(assessment().step_assessments)),
+        findings=tuple(reversed(assessment().finding_assessments)),
+        corrections=(
+            CorrectionAssessment("z", "last", evidence("last")),
+            CorrectionAssessment("a", "first", evidence("first")),
+        ),
+    )
+    result = score_assessment(rubric(), spec(), source)
+    payload = result.to_dict()
+    assert result.rubric == rubric()
+    assert result.spec == spec()
+    assert [item.step_id for item in result.assessment.step_assessments] == [
+        "explain",
+        "verify",
+        "safe",
+    ]
+    assert [item.finding_id for item in result.assessment.finding_assessments] == [
+        "wrong",
+        "danger",
+    ]
+    assert [item.correction_id for item in result.assessment.corrections] == ["a", "z"]
+    assert payload["rubric"]["instructions"] == "Score only the frozen assessment."
+    assert payload["rubric"]["criteria"][0]["description"] == "Technically correct"
+    assert payload["spec"]["required_steps"][0]["positive_points"] == "2"
+    assert payload["assessment"]["rater_id"] == "rater-2"
+    assert payload["assessment"]["step_assessments"][0]["supporting_evidence"] == [
+        {"start_offset": 0, "end_offset": 7, "quote": "explain"}
+    ]
+    assert result.raw_score_decimal == "4"
+    assert result.max_score_decimal == "4"
+    assert result.normalized_score_decimal == "1"
+    assert result.base_quality_decimal == "1"
+    with pytest.raises(FrozenInstanceError):
+        result.assessment.step_assessments[0].supporting_evidence[0].quote = "forged"
+
+
+def test_result_construction_and_subclass_forgery_are_sealed():
+    result = score_assessment(rubric(), spec(), assessment())
+    with pytest.raises(TypeError, match="score_assessment"):
+        ScoringResult()
+    with pytest.raises(TypeError, match="score_assessment"):
+        ScoringResult(**result.to_dict())
+    with pytest.raises(TypeError, match="score_assessment"):
+        replace(result, normalized_score=0.0)
+
+    def plain():
+        class Forged(ScoringResult):
+            pass
+
+    def data():
+        @dataclass(frozen=True)
+        class Forged(ScoringResult):
+            pass
+
+    def custom():
+        class Forged(ScoringResult):
+            def __init__(self):
+                pass
+
+    for define in (plain, data, custom):
+        with pytest.raises(TypeError, match="cannot be subclassed"):
+            define()
+    assert copy.copy(result) == result
+    assert copy.deepcopy(result) == result
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.__setitem__("rubric_hash", "0" * 64),
+        lambda payload: payload.__setitem__("normalized_score", 0.1),
+        lambda payload: payload.__setitem__("normalized_score_decimal", "0.1"),
+        lambda payload: payload["criterion_scores"][0].__setitem__("raw_score", 0.0),
+        lambda payload: payload["criterion_arithmetic"][0].__setitem__(
+            "raw_points", "0"
+        ),
+        lambda payload: payload["triggered_caps"].append(
+            {
+                "rule_id": "explain",
+                "criterion_id": "accuracy",
+                "effect": "quality_cap",
+                "value": "0.6",
+                "reason": "forged",
+            }
+        ),
+        lambda payload: payload["severe_or_critical_event_ids"].append("forged"),
+        lambda payload: payload["critical_omission_ids"].append("forged"),
+        lambda payload: payload["rubric"].__setitem__("instructions", "changed"),
+        lambda payload: payload["spec"].__setitem__("provenance", "changed"),
+        lambda payload: payload["assessment"].__setitem__("rater_id", "forged"),
+    ],
+)
+def test_from_dict_rejects_any_noncanonical_or_underived_payload(mutate):
+    payload = score_assessment(
+        rubric(), spec(), assessment(step_statuses=("contradicted", "met", "met"))
+    ).to_dict()
+    mutate(payload)
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+
+def test_global_rule_ids_and_all_not_met_caps_are_enforced():
+    with pytest.raises(ValueError, match="rule IDs must be globally unique"):
+        spec(
+            negative_findings=(
+                NegativeFindingSpec("explain", "false_claim", "accuracy", "1", "minor"),
+            )
+        )
+    uncoupled = spec(
+        required_steps=(
+            RequiredStepSpec("explain", "accuracy", "2", False, "0.6"),
+            *spec().required_steps[1:],
+        )
+    )
+    result = score_assessment(
+        rubric(), uncoupled, assessment(step_statuses=("not_met", "met", "met"))
+    )
+    assert [effect.rule_id for effect in result.triggered_caps] == ["explain"]
+    assert result.critical_omission_ids == ()
+
+
+def test_rubric_hash_binds_all_complete_rubric_content():
+    baseline = score_assessment(rubric(), spec(), assessment())
+    for changed in (
+        ScoringRubric(
+            "rubric-1", "Different instructions", rubric().criteria, "fixture:rubric"
+        ),
+        ScoringRubric(
+            "rubric-1",
+            rubric().instructions,
+            (
+                RubricCriterion("accuracy", "Different description", 3.0),
+                rubric().criteria[1],
+            ),
+            "fixture:rubric",
+        ),
+        ScoringRubric(
+            "rubric-1", rubric().instructions, rubric().criteria, "different:provenance"
+        ),
+    ):
+        result = score_assessment(changed, spec(), assessment())
+        assert result.rubric_hash != baseline.rubric_hash
+        assert result.scorer_hash != baseline.scorer_hash
+
+
+def test_deterministic_decimal_resource_bounds_reject_before_arithmetic():
+    for precision in (15, 65, 10**9):
+        with pytest.raises(ValueError, match="between 16 and 64"):
+            spec(decimal_precision=precision)
+    for value in ("1" * 65, "1000000000001", "0." + "1" * 65):
+        with pytest.raises(ValueError, match="positive_points"):
+            RequiredStepSpec("bounded", "accuracy", value, False)
+    with pytest.raises(ValueError, match="at most"):
+        spec(required_steps=spec().required_steps * 100)
+    huge_weight = ScoringRubric(
+        "rubric-1",
+        rubric().instructions,
+        (
+            RubricCriterion("accuracy", "Technically correct", 1e308),
+            RubricCriterion("safety", "Safe", 1e308),
+        ),
+        rubric().provenance,
+    )
+    with pytest.raises(ValueError, match="rubric weight"):
+        score_assessment(huge_weight, spec(), assessment())
+
+    repeating = spec(
+        decimal_precision=64,
+        required_steps=(
+            RequiredStepSpec("one", "accuracy", "1", False),
+            RequiredStepSpec("two", "accuracy", "2", False),
+            RequiredStepSpec("safe", "safety", "1", False),
+        ),
+        negative_findings=(),
+    )
+    repeating_assessment = assessment(
+        steps=(
+            StepAssessment("one", "met", evidence("one")),
+            StepAssessment("two", "not_met", ()),
+            StepAssessment("safe", "met", evidence("safe")),
+        ),
+        findings=(),
+    )
+    result = score_assessment(rubric(), repeating, repeating_assessment)
+    assert len(result.criterion_arithmetic[0].normalized) == 66
+    assert result.normalized_score_decimal is not None

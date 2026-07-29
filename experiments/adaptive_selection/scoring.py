@@ -11,7 +11,6 @@ from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN, localco
 import hashlib
 import json
 import re
-from types import MappingProxyType
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
 from .schema import CriterionScore, ScoringRubric
@@ -20,25 +19,16 @@ T = TypeVar("T", bound="CanonicalRecord")
 _DECIMAL_RE = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$")
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
-_FORBIDDEN_EVIDENCE_KEYS = frozenset(
-    {
-        "condition",
-        "condition_label",
-        "context_labels",
-        "filename",
-        "latency",
-        "ndcg",
-        "retrieval_precision",
-        "run_order",
-        "selected_context_item_ids",
-        "selected_ids",
-        "selection_decision",
-        "selector_mode",
-        "tokens",
-        "trace",
-        "traces",
-    }
-)
+_MAX_DECIMAL_TEXT = 64
+_MAX_DECIMAL = Decimal("1000000000000")
+_MIN_PRECISION = 16
+_MAX_PRECISION = 64
+_MAX_CRITERIA = 64
+_MAX_RULES = 128
+_MAX_CORRECTIONS = 256
+_MAX_EVIDENCE_SPANS = 256
+_MAX_RESPONSE_OFFSET = 10_000_000
+_MAX_QUOTE_LENGTH = 100_000
 
 
 def _nonempty(name: str, value: Any) -> None:
@@ -70,13 +60,37 @@ def _decimal(name: str, value: Any, positive: bool = False) -> Decimal:
         raise ValueError(
             "{} must be a canonical {}decimal string".format(name, qualifier)
         )
+    if len(value) > _MAX_DECIMAL_TEXT:
+        raise ValueError(
+            "{} must be at most {} characters".format(name, _MAX_DECIMAL_TEXT)
+        )
     try:
         parsed = Decimal(value)
     except InvalidOperation:
         raise ValueError("{} must be a canonical decimal string".format(name))
-    if not parsed.is_finite() or parsed < 0 or (positive and parsed <= 0):
+    if (
+        not parsed.is_finite()
+        or parsed < 0
+        or parsed > _MAX_DECIMAL
+        or (positive and parsed <= 0)
+    ):
         qualifier = "positive" if positive else "nonnegative"
-        raise ValueError("{} must be {}".format(name, qualifier))
+        raise ValueError(
+            "{} must be {} and at most {}".format(name, qualifier, _MAX_DECIMAL)
+        )
+    return parsed
+
+
+def _derived_decimal(name: str, value: Any, positive: bool = False) -> Decimal:
+    """Validate scorer-produced decimal text (which may include precision plus ``0.``)."""
+
+    if not isinstance(value, str) or len(value) > _MAX_PRECISION + 2:
+        raise ValueError("{} must be bounded canonical decimal text".format(name))
+    if not _DECIMAL_RE.fullmatch(value):
+        raise ValueError("{} must be canonical decimal text".format(name))
+    parsed = Decimal(value)
+    if not parsed.is_finite() or parsed < 0 or (positive and parsed <= 0):
+        raise ValueError("{} is out of range".format(name))
     return parsed
 
 
@@ -86,54 +100,6 @@ def _cap(value: Optional[str]) -> None:
     parsed = _decimal("quality_cap", value)
     if parsed > 1:
         raise ValueError("quality_cap must be between 0 and 1")
-
-
-def _freeze_json(value: Any, path: str) -> Any:
-    if value is None or type(value) in (bool, int, str):
-        return value
-    if type(value) is float:
-        import math
-
-        if not math.isfinite(value):
-            raise ValueError("{} must be finite".format(path))
-        return value
-    if isinstance(value, Mapping):
-        if any(type(key) is not str for key in value):
-            raise ValueError("{} object keys must be strings".format(path))
-        result = {}
-        for key in sorted(value):
-            result[key] = _freeze_json(value[key], "{}.{}".format(path, key))
-        return MappingProxyType(result)
-    if type(value) in (tuple, list):
-        return tuple(
-            _freeze_json(item, "{}[{}]".format(path, index))
-            for index, item in enumerate(value)
-        )
-    raise ValueError(
-        "{} contains unsupported JSON value: {}".format(path, type(value).__name__)
-    )
-
-
-def _freeze_evidence(value: Any) -> Any:
-    frozen = _freeze_json(value, "supporting_evidence")
-
-    def visit(item: Any) -> None:
-        if isinstance(item, Mapping):
-            for key, child in item.items():
-                normalized = "_".join(
-                    part for part in re.split(r"[^a-z0-9]+", key.casefold()) if part
-                )
-                if normalized in _FORBIDDEN_EVIDENCE_KEYS:
-                    raise ValueError(
-                        "supporting_evidence must not contain selector, condition, or retrieval fields"
-                    )
-                visit(child)
-        elif isinstance(item, tuple):
-            for child in item:
-                visit(child)
-
-    visit(frozen)
-    return frozen
 
 
 def _serialize(value: Any) -> Any:
@@ -193,6 +159,41 @@ class CanonicalRecord:
             return cls(**values)
         except TypeError as error:
             raise ValueError("invalid {} payload: {}".format(cls.__name__, error))
+
+
+@dataclass(frozen=True)
+class EvidenceSpan(CanonicalRecord):
+    """Strict response-relative evidence with no metadata extension point."""
+
+    start_offset: int
+    end_offset: int
+    quote: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.start_offset, int)
+            or isinstance(self.start_offset, bool)
+            or self.start_offset < 0
+            or self.start_offset > _MAX_RESPONSE_OFFSET
+        ):
+            raise ValueError("start_offset must be a bounded nonnegative integer")
+        if (
+            not isinstance(self.end_offset, int)
+            or isinstance(self.end_offset, bool)
+            or self.end_offset <= self.start_offset
+            or self.end_offset > _MAX_RESPONSE_OFFSET
+        ):
+            raise ValueError("end_offset must be bounded and greater than start_offset")
+        _nonempty("quote", self.quote)
+        if len(self.quote) > _MAX_QUOTE_LENGTH:
+            raise ValueError("quote is too long")
+
+    @classmethod
+    def from_dict(cls, data: Mapping) -> "EvidenceSpan":
+        data = _mapping(data)
+        if set(data) != {"start_offset", "end_offset", "quote"}:
+            raise ValueError("invalid EvidenceSpan payload: fields must match exactly")
+        return cls._flat(data)
 
 
 @dataclass(frozen=True)
@@ -288,10 +289,16 @@ class TaskScoringSpec(CanonicalRecord):
             )
         step_ids = tuple(item.step_id for item in self.required_steps)
         finding_ids = tuple(item.finding_id for item in self.negative_findings)
-        if len(set(step_ids)) != len(step_ids):
-            raise ValueError("step IDs must be unique")
-        if len(set(finding_ids)) != len(finding_ids):
-            raise ValueError("finding IDs must be unique")
+        if len(step_ids) + len(finding_ids) > _MAX_RULES:
+            raise ValueError(
+                "scoring specs support at most {} rules".format(_MAX_RULES)
+            )
+        if len(self.expected_criterion_ids) > _MAX_CRITERIA:
+            raise ValueError(
+                "scoring specs support at most {} criteria".format(_MAX_CRITERIA)
+            )
+        if len(set(step_ids + finding_ids)) != len(step_ids) + len(finding_ids):
+            raise ValueError("rule IDs must be globally unique")
         expected = set(self.expected_criterion_ids)
         if any(item.criterion_id not in expected for item in self.required_steps):
             raise ValueError("required step criterion_id must be expected")
@@ -311,9 +318,28 @@ class TaskScoringSpec(CanonicalRecord):
         if (
             not isinstance(self.decimal_precision, int)
             or isinstance(self.decimal_precision, bool)
-            or self.decimal_precision <= 0
+            or not _MIN_PRECISION <= self.decimal_precision <= _MAX_PRECISION
         ):
-            raise ValueError("decimal_precision must be a positive integer")
+            raise ValueError("decimal_precision must be between 16 and 64")
+        with localcontext(Context(prec=80, rounding=ROUND_HALF_EVEN)):
+            point_total = sum(
+                (
+                    _decimal("positive_points", item.positive_points)
+                    for item in self.required_steps
+                ),
+                Decimal("0"),
+            )
+            deduction_total = sum(
+                (
+                    _decimal("deduction", item.deduction)
+                    for item in self.negative_findings
+                ),
+                Decimal("0"),
+            )
+        if point_total > _MAX_DECIMAL or deduction_total > _MAX_DECIMAL:
+            raise ValueError(
+                "aggregate rule points must be at most {}".format(_MAX_DECIMAL)
+            )
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "TaskScoringSpec":
@@ -336,67 +362,104 @@ class TaskScoringSpec(CanonicalRecord):
 class StepAssessment(CanonicalRecord):
     step_id: str
     status: str
-    supporting_evidence: Mapping[str, Any]
+    supporting_evidence: Tuple[EvidenceSpan, ...]
 
     def __post_init__(self) -> None:
         _identifier("step_id", self.step_id)
         if self.status not in {"met", "not_met", "contradicted", "unresolved"}:
             raise ValueError("step status is invalid")
-        if not isinstance(self.supporting_evidence, Mapping):
-            raise ValueError("supporting_evidence must be an object")
-        frozen = _freeze_evidence(self.supporting_evidence)
-        if self.status in {"met", "contradicted"} and not frozen:
+        evidence = tuple(self.supporting_evidence)
+        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
+            isinstance(item, EvidenceSpan) for item in evidence
+        ):
+            raise ValueError(
+                "supporting_evidence must contain only EvidenceSpan records"
+            )
+        if self.status in {"met", "contradicted"} and not evidence:
             raise ValueError(
                 "supporting_evidence must be nonempty for met/contradicted"
             )
-        object.__setattr__(self, "supporting_evidence", frozen)
+        if self.status in {"not_met", "unresolved"} and evidence:
+            raise ValueError("supporting_evidence must be empty for not_met/unresolved")
+        object.__setattr__(self, "supporting_evidence", evidence)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "StepAssessment":
-        return cls._flat(data)
+        data = _mapping(data)
+        return cls._flat(
+            data,
+            supporting_evidence=tuple(
+                EvidenceSpan.from_dict(item)
+                for item in _sequence(data, "supporting_evidence")
+            ),
+        )
 
 
 @dataclass(frozen=True)
 class FindingAssessment(CanonicalRecord):
     finding_id: str
     status: str
-    supporting_evidence: Mapping[str, Any]
+    supporting_evidence: Tuple[EvidenceSpan, ...]
 
     def __post_init__(self) -> None:
         _identifier("finding_id", self.finding_id)
         if self.status not in {"present", "absent", "unresolved"}:
             raise ValueError("finding status is invalid")
-        if not isinstance(self.supporting_evidence, Mapping):
-            raise ValueError("supporting_evidence must be an object")
-        frozen = _freeze_evidence(self.supporting_evidence)
-        if self.status == "present" and not frozen:
+        evidence = tuple(self.supporting_evidence)
+        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
+            isinstance(item, EvidenceSpan) for item in evidence
+        ):
+            raise ValueError(
+                "supporting_evidence must contain only EvidenceSpan records"
+            )
+        if self.status == "present" and not evidence:
             raise ValueError("supporting_evidence must be nonempty for present")
-        object.__setattr__(self, "supporting_evidence", frozen)
+        if self.status in {"absent", "unresolved"} and evidence:
+            raise ValueError("supporting_evidence must be empty for absent/unresolved")
+        object.__setattr__(self, "supporting_evidence", evidence)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "FindingAssessment":
-        return cls._flat(data)
+        data = _mapping(data)
+        return cls._flat(
+            data,
+            supporting_evidence=tuple(
+                EvidenceSpan.from_dict(item)
+                for item in _sequence(data, "supporting_evidence")
+            ),
+        )
 
 
 @dataclass(frozen=True)
 class CorrectionAssessment(CanonicalRecord):
     correction_id: str
     description: str
-    supporting_evidence: Mapping[str, Any]
+    supporting_evidence: Tuple[EvidenceSpan, ...]
 
     def __post_init__(self) -> None:
         _identifier("correction_id", self.correction_id)
         _nonempty("description", self.description)
-        if not isinstance(self.supporting_evidence, Mapping):
-            raise ValueError("supporting_evidence must be an object")
-        frozen = _freeze_evidence(self.supporting_evidence)
-        if not frozen:
+        evidence = tuple(self.supporting_evidence)
+        if len(evidence) > _MAX_EVIDENCE_SPANS or not all(
+            isinstance(item, EvidenceSpan) for item in evidence
+        ):
+            raise ValueError(
+                "supporting_evidence must contain only EvidenceSpan records"
+            )
+        if not evidence:
             raise ValueError("supporting_evidence must be nonempty")
-        object.__setattr__(self, "supporting_evidence", frozen)
+        object.__setattr__(self, "supporting_evidence", evidence)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "CorrectionAssessment":
-        return cls._flat(data)
+        data = _mapping(data)
+        return cls._flat(
+            data,
+            supporting_evidence=tuple(
+                EvidenceSpan.from_dict(item)
+                for item in _sequence(data, "supporting_evidence")
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -433,6 +496,10 @@ class BlindedAssessment(CanonicalRecord):
         if not all(isinstance(item, CorrectionAssessment) for item in self.corrections):
             raise ValueError("corrections must contain CorrectionAssessment records")
         correction_ids = tuple(item.correction_id for item in self.corrections)
+        if len(correction_ids) > _MAX_CORRECTIONS:
+            raise ValueError(
+                "assessments support at most {} corrections".format(_MAX_CORRECTIONS)
+            )
         if len(set(correction_ids)) != len(correction_ids):
             raise ValueError("correction IDs must be unique")
 
@@ -500,11 +567,11 @@ class CriterionArithmetic(CanonicalRecord):
             for rule_id in value:
                 _identifier(name, rule_id)
             object.__setattr__(self, name, value)
-        maximum = _decimal("max_points", self.max_points, positive=True)
-        met = _decimal("met_points", self.met_points)
-        deduction = _decimal("deduction_points", self.deduction_points)
-        raw = _decimal("raw_points", self.raw_points)
-        normalized = _decimal("normalized", self.normalized)
+        maximum = _derived_decimal("max_points", self.max_points, positive=True)
+        met = _derived_decimal("met_points", self.met_points)
+        deduction = _derived_decimal("deduction_points", self.deduction_points)
+        raw = _derived_decimal("raw_points", self.raw_points)
+        normalized = _derived_decimal("normalized", self.normalized)
         if raw != max(Decimal("0"), min(maximum, met - deduction)):
             raise ValueError(
                 "raw_points must equal clamped met_points minus deductions"
@@ -523,17 +590,35 @@ class CriterionArithmetic(CanonicalRecord):
         )
 
 
-@dataclass(frozen=True)
+_SCORING_RESULT_TOKEN = object()
+
+
+@dataclass(frozen=True, init=False)
 class ScoringResult(CanonicalRecord):
+    """Complete scorer-derived artifact.
+
+    Public construction and subclassing are forbidden. ``from_dict`` is a validated
+    deserializer: it re-scores the embedded inputs and accepts only exact canonical output.
+    Standard shallow/deep copies are permitted because they cannot alter frozen fields.
+    """
+
     status: str
+    rubric: ScoringRubric
+    spec: TaskScoringSpec
+    assessment: BlindedAssessment
     rubric_id: str
     spec_id: str
     spec_version: str
+    rubric_hash: str
     spec_hash: str
     assessment_hash: str
     scorer_hash: str
     criterion_scores: Tuple[CriterionScore, ...]
     criterion_arithmetic: Tuple[CriterionArithmetic, ...]
+    raw_score_decimal: Optional[str]
+    max_score_decimal: Optional[str]
+    normalized_score_decimal: Optional[str]
+    base_quality_decimal: Optional[str]
     raw_score: Optional[float]
     max_score: Optional[float]
     normalized_score: Optional[float]
@@ -551,159 +636,42 @@ class ScoringResult(CanonicalRecord):
     decimal_version: str
     provenance: str
 
-    def __post_init__(self) -> None:
-        for name in (
-            "criterion_scores",
-            "criterion_arithmetic",
-            "triggered_deductions",
-            "triggered_caps",
-            "severe_or_critical_event_ids",
-            "critical_omission_ids",
-            "unresolved_rule_ids",
-        ):
-            object.__setattr__(self, name, tuple(getattr(self, name)))
-        for name in ("rubric_id", "spec_id", "spec_version"):
-            _identifier(name, getattr(self, name))
-        for name in (
-            "engine_version",
-            "normalization_version",
-            "rule_version",
-            "decimal_version",
-            "provenance",
-        ):
-            _nonempty(name, getattr(self, name))
-        for name in ("spec_hash", "assessment_hash", "scorer_hash"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
-                raise ValueError("{} must be a lowercase SHA-256 digest".format(name))
-        if (
-            not isinstance(self.correction_count, int)
-            or isinstance(self.correction_count, bool)
-            or self.correction_count < 0
-        ):
-            raise ValueError("correction_count must be a nonnegative integer")
-        if (
-            not isinstance(self.decimal_precision, int)
-            or isinstance(self.decimal_precision, bool)
-            or self.decimal_precision <= 0
-        ):
-            raise ValueError("decimal_precision must be a positive integer")
-        if not all(isinstance(item, CriterionScore) for item in self.criterion_scores):
-            raise ValueError("criterion_scores must contain CriterionScore records")
-        if not all(
-            isinstance(item, CriterionArithmetic) for item in self.criterion_arithmetic
-        ):
-            raise ValueError(
-                "criterion_arithmetic must contain CriterionArithmetic records"
-            )
-        if not all(
-            isinstance(item, RuleEffect)
-            for item in self.triggered_deductions + self.triggered_caps
-        ):
-            raise ValueError("triggered effects must contain RuleEffect records")
-        for name in (
-            "severe_or_critical_event_ids",
-            "critical_omission_ids",
-            "unresolved_rule_ids",
-        ):
-            values = getattr(self, name)
-            if len(set(values)) != len(values):
-                raise ValueError("{} must be unique".format(name))
-            for rule_id in values:
-                _identifier(name, rule_id)
-        if self.status not in {"scored", "needs_adjudication"}:
-            raise ValueError("status is invalid")
-        if self.status == "needs_adjudication":
-            if any(
-                value is not None
-                for value in (
-                    self.raw_score,
-                    self.max_score,
-                    self.normalized_score,
-                    self.base_quality,
-                )
-            ):
-                raise ValueError("adjudication results must not contain scores")
-            if self.criterion_scores or self.criterion_arithmetic:
-                raise ValueError(
-                    "adjudication results must not contain criterion scores"
-                )
-            if self.triggered_deductions or self.triggered_caps:
-                raise ValueError(
-                    "adjudication results must not interpret deductions or caps"
-                )
-            if self.severe_or_critical_event_ids or self.critical_omission_ids:
-                raise ValueError("adjudication results must not interpret event rules")
-            if not self.unresolved_rule_ids:
-                raise ValueError("adjudication results require unresolved_rule_ids")
-        else:
-            import math
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("ScoringResult cannot be subclassed")
 
-            numeric = (
-                self.raw_score,
-                self.max_score,
-                self.normalized_score,
-                self.base_quality,
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("ScoringResult instances are created only by score_assessment")
+
+    @classmethod
+    def _from_scorer(cls, token: object, **values: Any) -> "ScoringResult":
+        if token is not _SCORING_RESULT_TOKEN:
+            raise TypeError(
+                "ScoringResult instances are created only by score_assessment"
             )
-            if any(
-                not isinstance(value, (int, float))
-                or isinstance(value, bool)
-                or not math.isfinite(float(value))
-                for value in numeric
-            ):
-                raise ValueError("scored results require finite numeric scores")
-            maximum = cast(float, self.max_score)
-            raw = cast(float, self.raw_score)
-            normalized = cast(float, self.normalized_score)
-            base = cast(float, self.base_quality)
-            if (
-                maximum <= 0
-                or not 0 <= raw <= maximum
-                or not 0 <= normalized <= base <= 1
-            ):
-                raise ValueError("scored result values are out of range")
-            if self.unresolved_rule_ids:
-                raise ValueError("scored results must not contain unresolved rules")
-            if len(self.criterion_scores) != len(self.criterion_arithmetic) or tuple(
-                item.criterion_id for item in self.criterion_scores
-            ) != tuple(item.criterion_id for item in self.criterion_arithmetic):
-                raise ValueError("criterion score and arithmetic IDs/order must match")
-            context = Context(prec=self.decimal_precision, rounding=ROUND_HALF_EVEN)
-            with localcontext(context):
-                for item in self.criterion_arithmetic:
-                    if _decimal("normalized", item.normalized) != _decimal(
-                        "raw_points", item.raw_points
-                    ) / _decimal("max_points", item.max_points, positive=True):
-                        raise ValueError(
-                            "criterion normalized arithmetic is inconsistent"
-                        )
+        expected = {item.name for item in fields(cls)}
+        if set(values) != expected:
+            raise TypeError("internal ScoringResult field set is incomplete")
+        instance = object.__new__(cls)
+        for name, value in values.items():
+            object.__setattr__(instance, name, value)
+        return instance
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "ScoringResult":
-        data = _mapping(data)
-        return cls._flat(
-            data,
-            criterion_scores=tuple(
-                CriterionScore.from_dict(item)
-                for item in _sequence(data, "criterion_scores")
-            ),
-            criterion_arithmetic=tuple(
-                CriterionArithmetic.from_dict(item)
-                for item in _sequence(data, "criterion_arithmetic")
-            ),
-            triggered_deductions=tuple(
-                RuleEffect.from_dict(item)
-                for item in _sequence(data, "triggered_deductions")
-            ),
-            triggered_caps=tuple(
-                RuleEffect.from_dict(item) for item in _sequence(data, "triggered_caps")
-            ),
-            severe_or_critical_event_ids=_sequence(
-                data, "severe_or_critical_event_ids"
-            ),
-            critical_omission_ids=_sequence(data, "critical_omission_ids"),
-            unresolved_rule_ids=_sequence(data, "unresolved_rule_ids"),
-        )
+        try:
+            data = _mapping(data)
+            rubric_value = data.get("rubric")
+            spec_value = data.get("spec")
+            assessment_value = data.get("assessment")
+            rubric = ScoringRubric.from_dict(_mapping(rubric_value))
+            spec = TaskScoringSpec.from_dict(_mapping(spec_value))
+            assessment = BlindedAssessment.from_dict(_mapping(assessment_value))
+            derived = score_assessment(rubric, spec, assessment)
+            if _serialize(data) != derived.to_dict():
+                raise ValueError
+            return derived
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("payload is not an exact canonical derived scoring result")
 
 
 def _canonical_inputs(
@@ -725,10 +693,21 @@ def _canonical_inputs(
 def score_assessment(
     rubric: ScoringRubric, spec: TaskScoringSpec, assessment: BlindedAssessment
 ) -> ScoringResult:
-    """Aggregate declared rules; never infer semantics from arbitrary response prose."""
+    """Derive one complete artifact using bounded, exact decimal arithmetic only."""
 
     rubric, spec, assessment = _canonical_inputs(rubric, spec, assessment)
     rubric_ids = tuple(item.criterion_id for item in rubric.criteria)
+    if len(rubric_ids) > _MAX_CRITERIA:
+        raise ValueError("rubric supports at most {} criteria".format(_MAX_CRITERIA))
+    weight_values = tuple(Decimal(str(item.weight)) for item in rubric.criteria)
+    if any(value <= 0 or value > _MAX_DECIMAL for value in weight_values):
+        raise ValueError(
+            "each rubric weight must be positive and at most {}".format(_MAX_DECIMAL)
+        )
+    with localcontext(Context(prec=80, rounding=ROUND_HALF_EVEN)):
+        bounded_weight_total = sum(weight_values, Decimal("0"))
+    if bounded_weight_total > _MAX_DECIMAL:
+        raise ValueError("total rubric weight must be at most {}".format(_MAX_DECIMAL))
     if rubric.rubric_id != spec.rubric_id or rubric_ids != spec.expected_criterion_ids:
         raise ValueError("rubric/spec criterion IDs/order must correspond exactly")
     if assessment.rubric_id != rubric.rubric_id:
@@ -738,17 +717,14 @@ def score_assessment(
         spec.spec_version,
     ):
         raise ValueError("assessment spec identity must match spec")
-    for criterion_id in rubric_ids:
-        if not any(step.criterion_id == criterion_id for step in spec.required_steps):
-            raise ValueError("every criterion must have a positive required step")
 
     step_ids = tuple(item.step_id for item in spec.required_steps)
+    finding_ids = tuple(item.finding_id for item in spec.negative_findings)
     assessed_step_ids = tuple(item.step_id for item in assessment.step_assessments)
     if len(set(assessed_step_ids)) != len(assessed_step_ids) or set(
         assessed_step_ids
     ) != set(step_ids):
         raise ValueError("step assessment IDs must exactly match declared step IDs")
-    finding_ids = tuple(item.finding_id for item in spec.negative_findings)
     assessed_finding_ids = tuple(
         item.finding_id for item in assessment.finding_assessments
     )
@@ -761,23 +737,31 @@ def score_assessment(
 
     step_by_id = {item.step_id: item for item in assessment.step_assessments}
     finding_by_id = {item.finding_id: item for item in assessment.finding_assessments}
-    canonical_assessment = assessment.to_dict()
-    canonical_assessment["step_assessments"] = [
-        step_by_id[rule_id].to_dict() for rule_id in step_ids
+    canonical_payload = assessment.to_dict()
+    canonical_payload["step_assessments"] = [
+        step_by_id[item].to_dict() for item in step_ids
     ]
-    canonical_assessment["finding_assessments"] = [
-        finding_by_id[rule_id].to_dict() for rule_id in finding_ids
+    canonical_payload["finding_assessments"] = [
+        finding_by_id[item].to_dict() for item in finding_ids
     ]
-    canonical_assessment["corrections"] = [
+    canonical_payload["corrections"] = [
         item.to_dict()
         for item in sorted(assessment.corrections, key=lambda item: item.correction_id)
     ]
+    canonical_assessment = BlindedAssessment.from_dict(canonical_payload)
+    step_by_id = {item.step_id: item for item in canonical_assessment.step_assessments}
+    finding_by_id = {
+        item.finding_id: item for item in canonical_assessment.finding_assessments
+    }
+
+    rubric_hash = _hash(rubric.to_dict())
     spec_hash = _hash(spec.to_dict())
-    assessment_hash = _hash(canonical_assessment)
+    assessment_hash = _hash(canonical_assessment.to_dict())
     scorer_hash = _hash(
         {
-            "engine_version": spec.engine_version,
+            "rubric_hash": rubric_hash,
             "spec_hash": spec_hash,
+            "engine_version": spec.engine_version,
             "normalization_version": spec.normalization_version,
             "rule_version": spec.rule_version,
             "decimal_precision": spec.decimal_precision,
@@ -785,13 +769,17 @@ def score_assessment(
         }
     )
     common = dict(
+        rubric=rubric,
+        spec=spec,
+        assessment=canonical_assessment,
         rubric_id=rubric.rubric_id,
         spec_id=spec.spec_id,
         spec_version=spec.spec_version,
+        rubric_hash=rubric_hash,
         spec_hash=spec_hash,
         assessment_hash=assessment_hash,
         scorer_hash=scorer_hash,
-        correction_count=len(assessment.corrections),
+        correction_count=len(canonical_assessment.corrections),
         engine_version=spec.engine_version,
         normalization_version=spec.normalization_version,
         rule_version=spec.rule_version,
@@ -800,18 +788,19 @@ def score_assessment(
         provenance=spec.provenance,
     )
     unresolved = tuple(
-        [rule_id for rule_id in step_ids if step_by_id[rule_id].status == "unresolved"]
-        + [
-            rule_id
-            for rule_id in finding_ids
-            if finding_by_id[rule_id].status == "unresolved"
-        ]
+        [item for item in step_ids if step_by_id[item].status == "unresolved"]
+        + [item for item in finding_ids if finding_by_id[item].status == "unresolved"]
     )
     if unresolved:
-        return ScoringResult(
+        return ScoringResult._from_scorer(
+            _SCORING_RESULT_TOKEN,
             status="needs_adjudication",
             criterion_scores=(),
             criterion_arithmetic=(),
+            raw_score_decimal=None,
+            max_score_decimal=None,
+            normalized_score_decimal=None,
+            base_quality_decimal=None,
             raw_score=None,
             max_score=None,
             normalized_score=None,
@@ -824,6 +813,7 @@ def score_assessment(
             **common,
         )
 
+    # All magnitudes, counts, and precision are bounded above before Context or float use.
     context = Context(prec=spec.decimal_precision, rounding=ROUND_HALF_EVEN)
     criterion_scores = []
     arithmetic = []
@@ -834,7 +824,7 @@ def score_assessment(
     with localcontext(context):
         weighted = Decimal("0")
         total_weight = Decimal("0")
-        for criterion in rubric.criteria:
+        for criterion, weight in zip(rubric.criteria, weight_values):
             steps = tuple(
                 item
                 for item in spec.required_steps
@@ -900,7 +890,6 @@ def score_assessment(
                     _decimal_text(normalized),
                 )
             )
-            weight = Decimal(str(criterion.weight))
             weighted += weight * normalized
             total_weight += weight
 
@@ -908,10 +897,10 @@ def score_assessment(
                 status = step_by_id[item.step_id].status
                 if item.critical_omission and status != "met":
                     critical_omissions.append(item.step_id)
-                if item.quality_cap is not None and (
-                    status == "contradicted"
-                    or (item.critical_omission and status == "not_met")
-                ):
+                if item.quality_cap is not None and status in {
+                    "not_met",
+                    "contradicted",
+                }:
                     caps.append(
                         RuleEffect(
                             item.step_id,
@@ -949,11 +938,20 @@ def score_assessment(
         base = weighted / total_weight
         final = min([base] + [_decimal("quality_cap", item.value) for item in caps])
         raw_score = final * total_weight
+        raw_text = _decimal_text(raw_score)
+        maximum_text = _decimal_text(total_weight)
+        final_text = _decimal_text(final)
+        base_text = _decimal_text(base)
 
-    return ScoringResult(
+    return ScoringResult._from_scorer(
+        _SCORING_RESULT_TOKEN,
         status="scored",
         criterion_scores=tuple(criterion_scores),
         criterion_arithmetic=tuple(arithmetic),
+        raw_score_decimal=raw_text,
+        max_score_decimal=maximum_text,
+        normalized_score_decimal=final_text,
+        base_quality_decimal=base_text,
         raw_score=float(raw_score),
         max_score=float(total_weight),
         normalized_score=float(final),
@@ -968,6 +966,7 @@ def score_assessment(
 
 
 __all__ = [
+    "EvidenceSpan",
     "RequiredStepSpec",
     "NegativeFindingSpec",
     "TaskScoringSpec",

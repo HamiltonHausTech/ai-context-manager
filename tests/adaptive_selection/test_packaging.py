@@ -34,6 +34,7 @@ EXPECTED_PUBLIC_NAMES = {
     "IntegrityError",
     "RequiredStepSpec",
     "NegativeFindingSpec",
+    "EvidenceSpan",
     "TaskScoringSpec",
     "StepAssessment",
     "FindingAssessment",
@@ -174,7 +175,9 @@ def test_public_package_scores_blinded_assessment_without_selector_inputs():
         spec_version="1",
         step_assessments=(
             adaptive_selection.StepAssessment(
-                "answer", "met", {"quote": "frozen evidence"}
+                "answer",
+                "met",
+                (adaptive_selection.EvidenceSpan(0, 15, "frozen evidence"),),
             ),
         ),
         finding_assessments=(),
