@@ -1,7 +1,7 @@
 import copy
-from collections import Counter, defaultdict
 import hashlib
 import json
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ from experiments.adaptive_selection.dataset import (
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny_experiment.json"
 FAMILY_IDS = ("hybrid-network-return-routing", "terraform-drift-state")
-EXPECTED_HASH = "05cdb3edbc96d753f44b7161dcae8812679d7776306ebb6887911dda2f7bca32"
+EXPECTED_HASH = "75023a405371eb28503d65f915d6138cc9ccbd286eeb6eba809c1f90a8f9593a"
 
 
 def raw_fixture():
@@ -37,7 +37,7 @@ def corrupt(mutator):
 def test_stage0_fixture_loads_with_frozen_mechanics_and_manual_review():
     bundle = load_tiny_fixture(FIXTURE)
     assert bundle.dataset_bundle_version == DATASET_BUNDLE_VERSION == "1"
-    assert bundle.schema_version == "2"
+    assert bundle.schema_version == "3"
     assert bundle.family_order == FAMILY_IDS
     assert len(bundle.cases) == 6
     assert len(bundle.adaptation_feedback) == 4

@@ -5,8 +5,9 @@ learning implementation. Selector-visible task inputs and sealed evaluation evid
 are separate objects so held-out labels cannot be passed to a selector accidentally.
 
 Schema v1 was an unreleased development format and is intentionally unsupported.
-Schema v2 is the first candidate wire format; this module does not claim v1 migration
-support and rejects v1 payloads before nested deserialization.
+Schema v2 was the first candidate wire format. Schema v3 prospectively adds nullable
+provider revision and temperature evidence with an explicit temperature-support flag;
+older payloads are rejected before nested deserialization.
 
 Held-out screening is a conservative normalized exact-substring check using
 ``" ".join(text.casefold().split())``. It scans selector-visible field values and
@@ -20,15 +21,15 @@ not contain credentials or PII. Their paired hashes provide integrity evidence o
 not encryption or redaction; persistence-layer enforcement belongs to Task 3.
 """
 
+import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime
-import math
-import re
 from types import MappingProxyType
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 T = TypeVar("T", bound="RecordMixin")
 _TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 
@@ -575,10 +576,12 @@ class RunManifest(RecordMixin):
     selector_version: str
     provider: str
     model_id: str
+    provider_revision: Optional[str]
     prompt_template_hash: str
     config_hash: str
     code_revision: str
-    temperature: float
+    temperature: Optional[float]
+    temperature_supported: bool
     seed: Optional[int]
     seed_supported: bool
     tool_availability: Tuple[str, ...]
@@ -606,7 +609,20 @@ class RunManifest(RecordMixin):
         ):
             _nonempty(name, getattr(self, name))
         _timestamp("started_timestamp", self.started_timestamp)
-        _nonnegative_finite("temperature", self.temperature)
+        if self.provider_revision is not None:
+            _nonempty("provider_revision", self.provider_revision)
+        if not isinstance(self.temperature_supported, bool):
+            raise ValueError("temperature_supported must be boolean")
+        if self.temperature is not None:
+            _nonnegative_finite("temperature", self.temperature)
+        if not self.temperature_supported and self.temperature is not None:
+            raise ValueError(
+                "temperature must be null when temperature_supported is false"
+            )
+        if self.temperature_supported and self.temperature is None:
+            raise ValueError(
+                "temperature is required when temperature_supported is true"
+            )
         if not isinstance(self.seed_supported, bool):
             raise ValueError("seed_supported must be boolean")
         if self.seed is not None and (

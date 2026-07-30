@@ -5,7 +5,7 @@ from decimal import localcontext
 from fractions import Fraction
 from itertools import permutations
 from pathlib import Path
-from typing import cast
+from typing import Optional, cast
 
 import pytest
 
@@ -95,6 +95,7 @@ def _artifact(
     learning_policy=None,
     response_rule=None,
     step_status_rule=None,
+    provider_revision: Optional[str] = "rev",
 ):
     bundle = load_tiny_fixture(
         Path(__file__).parent / "fixtures" / "tiny_experiment.json"
@@ -159,7 +160,7 @@ def _artifact(
                 fixtures[request.request_hash] = RawTransportResult(
                     "recorded",
                     "model",
-                    "rev",
+                    provider_revision,
                     fixture_response,
                     fixture_response.encode("utf-8") or b"empty-response",
                     10,
@@ -274,8 +275,9 @@ def _artifact(
         config = ProviderConfiguration(
             "recorded",
             "model",
-            "rev",
+            provider_revision,
             0.0,
+            True,
             repetition.provider_seed,
             True,
             (),
@@ -391,6 +393,31 @@ def test_exact_pricing_pass_threshold_and_zero_denominators():
         and item.relative_improvement.denominator == 0
         for item in zero_baselines
     )
+
+
+def test_null_revision_pricing_round_trip_sorting_and_end_to_end_coverage():
+    null_rate = PriceRate(
+        "recorded", "model", None, TOKEN_ACCOUNTING_VERSION, "2.5", "10"
+    )
+    named_rate = PriceRate(
+        "recorded", "model", "rev", TOKEN_ACCOUNTING_VERSION, "2.5", "10"
+    )
+    pricing = PricingSpec("USD", "nullable-revision-v1", (null_rate, named_rate))
+
+    assert null_rate.to_dict()["provider_revision"] is None
+    assert PriceRate.from_dict(null_rate.to_dict()) == null_rate
+    assert PricingSpec.from_dict(pricing.to_dict()) == pricing
+
+    report = build_experiment_report(
+        _artifact(provider_revision=None), _spec(pricing, "0.5")
+    )
+    cost_pairs = [
+        item for item in report.pair_effects if item.metric == "estimated_cost"
+    ]
+    assert cost_pairs and all(item.effect.available for item in cost_pairs)
+
+    with pytest.raises(ValueError, match="canonically sorted"):
+        PricingSpec("USD", "wrong-order", (named_rate, null_rate))
 
 
 def test_roles_labels_pricing_and_recomputed_forgery_are_rejected():

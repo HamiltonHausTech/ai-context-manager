@@ -134,7 +134,7 @@ class _Record:
 class PriceRate(_Record):
     provider: str
     model_id: str
-    provider_revision: str
+    provider_revision: Optional[str]
     token_accounting_version: str
     input_per_million: str
     output_per_million: str
@@ -146,14 +146,15 @@ class PriceRate(_Record):
         for name in (
             "provider",
             "model_id",
-            "provider_revision",
             "token_accounting_version",
         ):
             _text(name, getattr(self, name))
+        if self.provider_revision is not None:
+            _text("provider_revision", self.provider_revision)
         _decimal("input_per_million", self.input_per_million, Decimal("0"))
         _decimal("output_per_million", self.output_per_million, Decimal("0"))
         object.__setattr__(
-            self, "rate_hash", _domain_hash("adaptive-price-rate-v1", self._payload())
+            self, "rate_hash", _domain_hash("adaptive-price-rate-v2", self._payload())
         )
 
     def _payload(self) -> Dict[str, Any]:
@@ -200,13 +201,25 @@ class PricingSpec(_Record):
             )
             for item in rates
         )
-        if len(set(keys)) != len(keys) or keys != tuple(sorted(keys)):
+        sorted_keys = tuple(
+            sorted(
+                keys,
+                key=lambda item: (
+                    item[0],
+                    item[1],
+                    item[2] is not None,
+                    item[2] or "",
+                    item[3],
+                ),
+            )
+        )
+        if len(set(keys)) != len(keys) or keys != sorted_keys:
             _fail("pricing rates must be unique and canonically sorted by identity")
         object.__setattr__(self, "rates", rates)
         object.__setattr__(
             self,
             "pricing_hash",
-            _domain_hash("adaptive-pricing-spec-v1", self._payload()),
+            _domain_hash("adaptive-pricing-spec-v2", self._payload()),
         )
 
     def _payload(self) -> Dict[str, Any]:

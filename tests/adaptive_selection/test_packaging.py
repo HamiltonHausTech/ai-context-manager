@@ -138,7 +138,7 @@ EXPECTED_PUBLIC_NAMES = {
     "ExperimentResult",
 }
 EXPECTED_FIXTURE_HASH = (
-    "05cdb3edbc96d753f44b7161dcae8812679d7776306ebb6887911dda2f7bca32"
+    "75023a405371eb28503d65f915d6138cc9ccbd286eeb6eba809c1f90a8f9593a"
 )
 
 
@@ -184,10 +184,12 @@ def test_public_package_exports_load_and_persist_tiny_fixture(tmp_path):
                     selector_version="public-api-test-v1",
                     provider="test-provider",
                     model_id="test-model",
+                    provider_revision="test-revision",
                     prompt_template_hash="sha256:test-prompt",
                     config_hash="sha256:test-config",
                     code_revision="test-revision",
                     temperature=0.0,
+                    temperature_supported=True,
                     seed=0,
                     seed_supported=True,
                     tool_availability=(),
@@ -215,6 +217,7 @@ def test_public_package_builds_and_validates_provider_bound_manifest():
         model_id="test-model",
         provider_revision="test-revision",
         temperature=0.0,
+        temperature_supported=True,
         seed=0,
         seed_supported=True,
         tool_availability=("calculator",),
