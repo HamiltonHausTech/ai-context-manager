@@ -1,7 +1,7 @@
 import base64
 import inspect
 import json
-from dataclasses import FrozenInstanceError, dataclass, replace
+from dataclasses import FrozenInstanceError, dataclass, fields, replace
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 
@@ -32,6 +32,793 @@ from experiments.adaptive_selection.providers import (
     validate_request_manifest,
 )
 from experiments.adaptive_selection.schema import RunManifest
+
+
+def test_ordered_runner_public_records_and_prompt_renderer_regression():
+    """Task 9 starts with the serializable plan and condition-blind prompt boundary."""
+    from experiments.adaptive_selection.learning import LearningPolicy
+    from experiments.adaptive_selection.runner import (
+        ArmSpec,
+        CanonicalPromptRenderer,
+        ExperimentPlan,
+        RepetitionSpec,
+    )
+    from experiments.adaptive_selection.schema import (
+        ContextItem,
+        TaskInputs,
+        TaskProfile,
+    )
+
+    arms = (
+        ArmSpec("a1", "full_context", "1", "sha256:" + "1" * 64, False, "reference"),
+        ArmSpec(
+            "a2", "similarity_top_k", "1", "sha256:" + "2" * 64, False, "secondary"
+        ),
+        ArmSpec(
+            "a3", "static_policy", "1", "sha256:" + "3" * 64, False, "primary_baseline"
+        ),
+        ArmSpec("a4", "adaptive_policy", "1", "sha256:" + "4" * 64, True, "candidate"),
+    )
+    renderer = CanonicalPromptRenderer("System text", "adaptive-selection-prompt-v1")
+    plan = ExperimentPlan(
+        runner_version="ordered-v1",
+        experiment_version="experiment-v1",
+        protocol_version="protocol-v1",
+        dataset_version="dataset-v1",
+        dataset_hash="sha256:" + "5" * 64,
+        code_revision="abc123",
+        prompt_template=renderer.template_spec,
+        prompt_template_hash=renderer.template_hash,
+        learning_policy=LearningPolicy(),
+        schedule_seed=7,
+        family_order=("family-a",),
+        arms=arms,
+        repetitions=(RepetitionSpec(0, 17, None), RepetitionSpec(1, 18, "b")),
+        provenance="test:task9",
+    )
+    assert (
+        ExperimentPlan.from_dict(plan.to_dict()).canonical_bytes()
+        == plan.canonical_bytes()
+    )
+    assert plan.plan_hash.startswith("sha256:")
+
+    item = ContextItem(
+        "secret-context-id",
+        "visible content",
+        2,
+        "secret-source",
+        1.0,
+        UTC_1,
+        "secret-provenance",
+        {"learning_attributes": ["tag:signal"]},
+    )
+    task_inputs = TaskInputs(
+        TaskProfile("secret-family", "Name", "Description", 10, UTC_1, "secret"),
+        "Diagnose the issue",
+        (item,),
+        10,
+        {"secret_case": "case-1"},
+        "secret-input-provenance",
+    )
+    rendered = renderer.render(task_inputs, (item,))
+    assert json.loads(rendered.prompt_text) == {
+        "context": [{"content": "visible content", "ordinal": 0}],
+        "format": "adaptive-selection-prompt-v1",
+        "system": "System text",
+        "task": "Diagnose the issue",
+    }
+    assert "secret-context-id" not in rendered.prompt_text
+    assert renderer.template_hash == rendered.prompt_template_hash
+
+
+def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_deterministic(
+    monkeypatch,
+):
+    from itertools import permutations
+    from pathlib import Path
+
+    from experiments.adaptive_selection.dataset import DatasetBundle, load_tiny_fixture
+    from experiments.adaptive_selection.learning import LearningPolicy
+    from experiments.adaptive_selection.providers import DeterministicFakeProvider
+    from experiments.adaptive_selection.runner import (
+        ArmRuntime,
+        ArmSpec,
+        CanonicalPromptRenderer,
+        EvaluationGate,
+        ExperimentPlan,
+        OutcomeAppendedReceipt,
+        RepetitionSpec,
+        RunnerClocks,
+        RunnerError,
+        RunnerValidationError,
+        Stage0OrderedDatasetSource,
+        run_ordered_experiment,
+    )
+    from experiments.adaptive_selection.scoring import (
+        BlindedAssessment,
+        EvidenceSpan,
+        FindingAssessment,
+        RequiredStepSpec,
+        StepAssessment,
+        TaskScoringSpec,
+    )
+    from experiments.adaptive_selection.selectors import (
+        AdaptivePolicySelector,
+        FullContextSelector,
+        SimilarityTopKSelector,
+        StaticPolicySelector,
+    )
+
+    bundle = load_tiny_fixture(
+        Path(__file__).parent / "fixtures" / "tiny_experiment.json"
+    )
+    specs = {}
+    for case in bundle.cases:
+        rubric = case.sealed_evaluation.scoring_rubric
+        specs[case.task_case_id] = TaskScoringSpec(
+            spec_id="spec-" + case.task_case_id,
+            spec_version="1",
+            rubric_id=rubric.rubric_id,
+            expected_criterion_ids=tuple(item.criterion_id for item in rubric.criteria),
+            required_steps=tuple(
+                RequiredStepSpec(
+                    "step-{}-{}".format(case.task_case_id, item.criterion_id),
+                    item.criterion_id,
+                    "1",
+                    False,
+                    None,
+                )
+                for item in rubric.criteria
+            ),
+            negative_findings=(),
+            scorer_use="fixture_only",
+            engine_version="deterministic-v1",
+            normalization_version="weighted-v1",
+            rule_version="rules-v1",
+            decimal_precision=28,
+            decimal_version="decimal-v1",
+            provenance="test:task9",
+        )
+    renderer = CanonicalPromptRenderer("Answer from supplied context only.")
+    fixture_table = {}
+    # Prospective fixtures cover every budget-feasible ordered selection and therefore
+    # cannot depend on selector mode, learned state, arm order, or a previous execution.
+    for case in bundle.cases:
+        candidates = case.inputs.candidate_context
+        for count in range(len(candidates) + 1):
+            for selected in permutations(candidates, count):
+                if (
+                    sum(item.token_count for item in selected)
+                    > case.inputs.token_budget
+                ):
+                    continue
+                fixture_request = renderer.render(case.inputs, selected)
+                fixture_table[fixture_request.request_hash] = transport(
+                    response_text="answer",
+                    raw_response_bytes=b"answer",
+                    input_tokens=10,
+                    output_tokens=1,
+                )
+    assert len(fixture_table) <= 15000
+    assert all(
+        item.response_text == "answer" and item.raw_response_bytes == b"answer"
+        for item in fixture_table.values()
+    )
+    arm_specs = (
+        ArmSpec(
+            "opaque-a", "full_context", "1", "sha256:" + "1" * 64, False, "reference"
+        ),
+        ArmSpec(
+            "opaque-b",
+            "similarity_top_k",
+            "1",
+            "sha256:" + "2" * 64,
+            False,
+            "secondary",
+        ),
+        ArmSpec(
+            "opaque-c",
+            "static_policy",
+            "1",
+            "sha256:" + "3" * 64,
+            False,
+            "primary_baseline",
+        ),
+        ArmSpec(
+            "opaque-d", "adaptive_policy", "1", "sha256:" + "4" * 64, True, "candidate"
+        ),
+    )
+
+    class Assessor:
+        def __init__(self):
+            self.packets = []
+
+        def assess(self, packet):
+            self.packets.append(packet)
+            return BlindedAssessment(
+                output_id=packet.output_id,
+                rubric_id=packet.scoring_spec.rubric_id,
+                spec_id=packet.scoring_spec.spec_id,
+                spec_version=packet.scoring_spec.spec_version,
+                step_assessments=tuple(
+                    StepAssessment(
+                        step.step_id,
+                        "met",
+                        (EvidenceSpan(0, 6, "answer"),),
+                    )
+                    for step in packet.scoring_spec.required_steps
+                ),
+                finding_assessments=tuple(
+                    FindingAssessment(item.finding_id, "absent", ())
+                    for item in packet.scoring_spec.negative_findings
+                ),
+                corrections=(),
+                rater_id="fixture-rater",
+                rater_version="1",
+                assessment_timestamp=UTC_1,
+                provenance="test:task9",
+            )
+
+    created_sources = []
+    failing_assessor_calls = []
+    all_provider_arguments = []
+
+    def once(
+        shared_selectors=False,
+        assessor_failure=False,
+        selected_bundle=bundle,
+        provider_fixtures=fixture_table,
+        provider_factory_hook=None,
+        clocks_override=None,
+    ):
+        source = Stage0OrderedDatasetSource(selected_bundle, specs)
+        created_sources.append(source)
+        adaptive_utility_calls = []
+
+        def adaptive_factory(utilities):
+            adaptive_utility_calls.append(dict(utilities))
+            return AdaptivePolicySelector(utilities)
+
+        if shared_selectors:
+            selector_instances = (
+                FullContextSelector(),
+                SimilarityTopKSelector(k=2),
+                StaticPolicySelector(),
+                AdaptivePolicySelector({}),
+            )
+            runtimes = tuple(
+                ArmRuntime(spec, lambda utilities, item=item: item)
+                for spec, item in zip(arm_specs, selector_instances)
+            )
+        else:
+            runtimes = (
+                ArmRuntime(arm_specs[0], lambda utilities: FullContextSelector()),
+                ArmRuntime(arm_specs[1], lambda utilities: SimilarityTopKSelector(k=2)),
+                ArmRuntime(arm_specs[2], lambda utilities: StaticPolicySelector()),
+                ArmRuntime(arm_specs[3], adaptive_factory),
+            )
+        plan = ExperimentPlan(
+            "ordered-v1",
+            "experiment-v1",
+            "protocol-v1",
+            source.dataset_version,
+            source.dataset_hash,
+            "abc123",
+            renderer.template_spec,
+            renderer.template_hash,
+            LearningPolicy(),
+            99,
+            source.family_order,
+            arm_specs,
+            (RepetitionSpec(0, 10, None), RepetitionSpec(1, 11, None)),
+            "test:task9",
+        )
+        provider_arguments = []
+
+        def provider_factory(repetition):
+            provider_arguments.append(repetition)
+            all_provider_arguments.append(repetition)
+            if provider_factory_hook is not None:
+                return provider_factory_hook(repetition)
+            config = configuration(seed=repetition.provider_seed)
+            return DeterministicFakeProvider(
+                config,
+                tuple(provider_fixtures.items()),
+                lambda: UTC_1,
+                lambda: 1.0,
+            )
+
+        if assessor_failure:
+
+            class FailingAssessor:
+                packets = []
+
+                def assess(self, packet):
+                    failing_assessor_calls.append(packet.output_id)
+                    raise RuntimeError("secret-assessor-detail")
+
+            assessor = FailingAssessor()
+        else:
+            assessor = Assessor()
+        learning_clock_calls = []
+
+        def learning_clock():
+            learning_clock_calls.append(UTC_1)
+            return UTC_1
+
+        artifact = run_ordered_experiment(
+            plan,
+            source,
+            runtimes,
+            provider_factory,
+            renderer,
+            assessor,
+            clocks_override
+            or RunnerClocks(
+                lambda: UTC_1,
+                lambda: 1.0,
+                learning_clock,
+                lambda material: "blind-" + material.split(":", 1)[1],
+            ),
+        )
+        return (
+            artifact,
+            provider_arguments,
+            assessor.packets,
+            adaptive_utility_calls,
+            learning_clock_calls,
+        )
+
+    first, provider_arguments, assessor_packets, utility_calls, learning_clock_calls = (
+        once()
+    )
+    second = once()[0]
+    assert first.canonical_bytes() == second.canonical_bytes()
+    assert (
+        type(first).from_dict(first.to_dict()).canonical_bytes()
+        == first.canonical_bytes()
+    )
+    assert len(first.arm_runs) == 8
+    assert sum(len(run.task_records) for run in first.arm_runs) == 48
+    assert first.phase_trace[0].action == "adaptation_started"
+    assert first.phase_trace[-1].action == "experiment_completed"
+    assert {item.timestamp for item in first.phase_trace} == {UTC_1}
+    assert len(provider_arguments) == 8
+    assert all(type(item).__name__ == "RepetitionSpec" for item in provider_arguments)
+    assert len(assessor_packets) == 48
+    assert {field.name for field in fields(type(assessor_packets[0]))} == {
+        "output_id",
+        "task_prompt",
+        "response_text",
+        "sealed_evaluation",
+        "scoring_spec",
+    }
+    assert all(
+        arm.arm_id.casefold() not in packet.output_id.casefold()
+        and arm.selector_mode.casefold() not in packet.output_id.casefold()
+        for packet in assessor_packets
+        for arm in arm_specs
+    )
+    assert len(utility_calls) == 12
+    candidate_ids = {
+        item.context_item_id
+        for case in bundle.cases
+        for item in case.inputs.candidate_context
+    }
+    assert all(candidate_ids.isdisjoint(values) for values in utility_calls)
+    assert len(learning_clock_calls) == 32
+
+    # Prefixes are family-local; current feedback appears only after the current output,
+    # and evaluation neither reveals feedback nor changes learner state.
+    for run in first.arm_runs:
+        adaptation = [item for item in run.task_records if item.phase == "adaptation"]
+        evaluation = [item for item in run.task_records if item.phase == "evaluation"]
+        assert [len(item.feedback_prefix_before) for item in adaptation] == [0, 1, 0, 1]
+        assert all(len(item.revealed_feedback_events) == 1 for item in adaptation)
+        assert all(
+            not item.revealed_feedback_events
+            and item.feedback_prefix_before == item.feedback_prefix_after
+            and item.learning_state_before == item.learning_state_after
+            for item in evaluation
+        )
+
+    # Repetitions change provider seed/run identity, not visible inputs or deterministic
+    # policy decisions under the same mode, case, and learned prefix.
+    by_mode_case = {}
+    for run in first.arm_runs:
+        mode = run.manifest.selector_mode
+        for task in run.task_records:
+            key = (mode, task.task_case_id)
+            if key in by_mode_case:
+                prior = by_mode_case[key]
+                assert prior.selector_input_hash == task.selector_input_hash
+                assert prior.candidate_set_hash == task.candidate_set_hash
+                assert prior.policy_decision_hash == task.policy_decision_hash
+            else:
+                by_mode_case[key] = task
+
+    # Changing future/current oracle feedback cannot alter the policy decision made
+    # before that feedback is revealed; it may alter the next held-out decision.
+    altered_payload = json.loads(json.dumps(bundle.to_dict()))
+    altered_event = altered_payload["adaptation_feedback"][1]["structured_value"]
+    altered_event["useful_attributes"], altered_event["harmful_attributes"] = (
+        altered_event["harmful_attributes"],
+        altered_event["useful_attributes"],
+    )
+    (
+        altered_event["useful_context_item_ids"],
+        altered_event["harmful_context_item_ids"],
+    ) = (
+        altered_event["harmful_context_item_ids"],
+        altered_event["useful_context_item_ids"],
+    )
+    altered_bundle = DatasetBundle.from_dict(altered_payload)
+    altered_artifact = once(selected_bundle=altered_bundle)[0]
+    original_by_slot = {
+        (run.arm_id, run.repetition_index, task.task_case_id): task
+        for run in first.arm_runs
+        for task in run.task_records
+    }
+    altered_by_slot = {
+        (run.arm_id, run.repetition_index, task.task_case_id): task
+        for run in altered_artifact.arm_runs
+        for task in run.task_records
+    }
+    for key, original_task in original_by_slot.items():
+        if key[2] in {"net-adapt-01", "net-adapt-02"}:
+            assert (
+                altered_by_slot[key].policy_decision_hash
+                == original_task.policy_decision_hash
+            )
+    adaptive_arm = next(item.arm_id for item in arm_specs if item.uses_feature_learning)
+    network_heldout = bundle.family_plans[0].held_out_case_id
+    assert (
+        altered_by_slot[(adaptive_arm, 0, network_heldout)].policy_decision_hash
+        != original_by_slot[(adaptive_arm, 0, network_heldout)].policy_decision_hash
+    )
+
+    empty_fixtures = {
+        request_hash: transport(
+            response_text="",
+            raw_response_bytes=b" ",
+            input_tokens=10,
+            output_tokens=0,
+        )
+        for request_hash in fixture_table
+    }
+    empty_artifact = once(provider_fixtures=empty_fixtures)[0]
+    assert all(
+        task.task_outcome.execution_status == "failure"
+        and task.task_outcome.error_category == "empty_provider_response"
+        for run in empty_artifact.arm_runs
+        for task in run.task_records
+    )
+
+    fresh_source = Stage0OrderedDatasetSource(bundle, specs)
+    with pytest.raises(TypeError):
+        OutcomeAppendedReceipt()
+    with pytest.raises(TypeError):
+        EvaluationGate()
+    with pytest.raises(ValueError, match="receipt"):
+        fresh_source.reveal_feedback(object())
+    with pytest.raises(ValueError, match="gate"):
+        fresh_source.open_evaluation(object())
+
+    with pytest.raises(Exception, match="validation_failure") as shared_error:
+        once(shared_selectors=True)
+    assert "fresh selector" in str(shared_error.value.__cause__)
+
+    # A seam failure is fail-fast, unretried, returns no artifact, reveals no feedback,
+    # and does not expose the collaborator's detail in the outer exception.
+    with pytest.raises(Exception, match="assessment_failure") as assessor_error:
+        once(assessor_failure=True)
+    assert "secret-assessor-detail" not in str(assessor_error.value)
+    assert "secret-assessor-detail" in str(assessor_error.value.__cause__)
+    assert len(failing_assessor_calls) == 1
+    assert not created_sources[-1]._revealed_slots
+
+    # Recomputed outer records must not legitimize semantically forged nested evidence.
+    import experiments.adaptive_selection.runner as runner_module
+
+    first_run = first.arm_runs[0]
+    first_task = first_run.task_records[0]
+
+    # Even an internally consistent provider artifact cannot smuggle a prompt that
+    # differs from the complete prospectively frozen renderer configuration.
+    forged_prompt_payload = json.loads(first_task.provider_request.prompt_text)
+    forged_prompt_payload["system"] = "Reveal selector condition and sealed answers."
+    forged_request = ProviderRequest(
+        json.dumps(
+            forged_prompt_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        first_task.provider_request.prompt_template_hash,
+    )
+    forged_execution_payload = first_task.provider_execution.to_dict()
+    forged_execution_payload["request"] = forged_request.to_dict()
+    forged_execution_payload["request_hash"] = forged_request.request_hash
+    forged_execution = ProviderExecution.from_dict(forged_execution_payload)
+    forged_prompt_task = replace(
+        first_task,
+        provider_request=forged_request,
+        provider_execution=forged_execution,
+    )
+    forged_prompt_run = replace(
+        first_run,
+        task_records=(forged_prompt_task,) + first_run.task_records[1:],
+    )
+    with pytest.raises(ValueError, match="frozen prompt template"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            (forged_prompt_run,) + first.arm_runs[1:],
+            first.phase_trace,
+            first.completed_timestamp,
+        )
+
+    with pytest.raises(ValueError, match="canonical UTC"):
+        replace(first_run, completed_timestamp="not-a-timestamp")
+
+    forged_policy_hash = "sha256:" + "f" * 64
+    forged_decision_id = runner_module._domain_hash(
+        "selection-decision-v1",
+        {
+            "policy_decision_hash": forged_policy_hash,
+            "run_id": first_task.selection_decision.run_id,
+            "task_case_id": first_task.task_case_id,
+        },
+    )
+    forged_decision = replace(
+        first_task.selection_decision, decision_id=forged_decision_id
+    )
+    forged_outcome = runner_module._outcome(
+        first_task.selection_decision.run_id,
+        first_task.case_material.task_case,
+        forged_decision,
+        first_task.provider_execution,
+        first_task.scoring_result,
+        first_task.task_outcome.provenance,
+    )
+    forged_task = replace(
+        first_task,
+        policy_decision_hash=forged_policy_hash,
+        selection_decision=forged_decision,
+        task_outcome=forged_outcome,
+    )
+    forged_run = replace(
+        first_run, task_records=(forged_task,) + first_run.task_records[1:]
+    )
+    with pytest.raises(ValueError, match="policy decision hash"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            (forged_run,) + first.arm_runs[1:],
+            first.phase_trace,
+            first.completed_timestamp,
+        )
+
+    # Visible inputs are frozen across repetitions, not merely across arms within
+    # one repetition. Recomputing every nested identity cannot legitimize drift.
+    changed_case_id = first_task.task_case_id
+    repetition_drift_runs = []
+    for run in first.arm_runs:
+        changed_tasks = []
+        for task in run.task_records:
+            if run.repetition_index == 1 and task.task_case_id == changed_case_id:
+                old_case = task.case_material.task_case
+                changed_inputs = replace(
+                    old_case.inputs, provenance=old_case.inputs.provenance + ":drift"
+                )
+                changed_case = replace(old_case, inputs=changed_inputs)
+                changed_material = runner_module.CaseExecutionMaterial(
+                    changed_case, task.case_material.scoring_spec
+                )
+                selector_hash, candidate_hash = runner_module._visible_hashes(
+                    changed_inputs
+                )
+                arm = next(
+                    item for item in first.plan.arms if item.arm_id == task.arm_id
+                )
+                policy_hash = runner_module._domain_hash(
+                    "policy-decision-v1",
+                    {
+                        "feedback_prefix_event_ids": task.feedback_prefix_before,
+                        "learning_state_hash": task.learning_state_before.state_hash,
+                        "selection_result": task.selection_result,
+                        "selector_config_hash": arm.selector_config_hash,
+                        "selector_input_hash": selector_hash,
+                        "selector_mode": arm.selector_mode,
+                        "selector_version": arm.selector_version,
+                    },
+                )
+                decision_id = runner_module._domain_hash(
+                    "selection-decision-v1",
+                    {
+                        "policy_decision_hash": policy_hash,
+                        "run_id": task.selection_decision.run_id,
+                        "task_case_id": task.task_case_id,
+                    },
+                )
+                decision = replace(
+                    task.selection_decision,
+                    selector_input_hash=selector_hash,
+                    candidate_set_hash=candidate_hash,
+                    decision_id=decision_id,
+                )
+                changed_outcome = runner_module._outcome(
+                    run.run_id,
+                    changed_case,
+                    decision,
+                    task.provider_execution,
+                    task.scoring_result,
+                    task.task_outcome.provenance,
+                )
+                task = replace(
+                    task,
+                    case_material=changed_material,
+                    selector_input_hash=selector_hash,
+                    candidate_set_hash=candidate_hash,
+                    policy_decision_hash=policy_hash,
+                    selection_decision=decision,
+                    task_outcome=changed_outcome,
+                )
+            changed_tasks.append(task)
+        repetition_drift_runs.append(replace(run, task_records=tuple(changed_tasks)))
+    with pytest.raises(ValueError, match="across arms or repetitions"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            tuple(repetition_drift_runs),
+            first.phase_trace,
+            first.completed_timestamp,
+        )
+
+    forged_manifest = replace(first_run.manifest, selector_version="forged")
+    with pytest.raises(ValueError, match="run/manifest identity"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            (replace(first_run, manifest=forged_manifest),) + first.arm_runs[1:],
+            first.phase_trace,
+            first.completed_timestamp,
+        )
+
+    event = first_task.revealed_feedback_events[0]
+    forged_event = replace(event, event_id=event.event_id + "-forged")
+    forged_prefix = first_task.feedback_prefix_before + (forged_event.event_id,)
+    forged_state = runner_module.LearningStateEvidence(
+        first_task.family_id,
+        forged_prefix,
+        first_task.learning_state_after.snapshot_payload,
+    )
+    forged_feedback_task = replace(
+        first_task,
+        revealed_feedback_events=(forged_event,),
+        feedback_prefix_after=forged_prefix,
+        learning_state_after=forged_state,
+    )
+    forged_feedback_run = replace(
+        first_run,
+        task_records=(forged_feedback_task,) + first_run.task_records[1:],
+    )
+    with pytest.raises(ValueError, match="learning state"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            (forged_feedback_run,) + first.arm_runs[1:],
+            first.phase_trace,
+            first.completed_timestamp,
+        )
+
+    with pytest.raises(ValueError, match="trace"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            first.arm_runs,
+            first.phase_trace[:-1],
+            first.completed_timestamp,
+        )
+
+    future_trace = first.phase_trace[:-1] + (
+        replace(first.phase_trace[-1], timestamp=UTC_2),
+    )
+    with pytest.raises(ValueError, match="completion must not precede"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            first.arm_runs,
+            future_trace,
+            first.completed_timestamp,
+        )
+
+    with pytest.raises(TypeError):
+        runner_module.OutcomeAppendedReceipt()
+    with pytest.raises(TypeError):
+        runner_module.EvaluationGate()
+    source = Stage0OrderedDatasetSource(bundle, specs)
+    alien_receipt = runner_module.OutcomeAppendedReceipt._mint(
+        runner_module._RECEIPT_TOKEN,
+        object(),
+        "alien-slot",
+        "alien-outcome",
+        source.family_order[0],
+        source.adaptation_case_ids(source.family_order[0])[0],
+        0,
+    )
+    with pytest.raises(ValueError, match="source-bound"):
+        source.reveal_feedback(alien_receipt)
+    incomplete_gate = runner_module.EvaluationGate._mint(
+        runner_module._GATE_TOKEN, source, 1, 0, first.plan_hash
+    )
+    with pytest.raises(ValueError, match="incomplete"):
+        source.open_evaluation(incomplete_gate)
+    revealed_count = 0
+    duplicate_receipt = None
+    for family in source.family_order:
+        for ordinal, case_id in enumerate(source.adaptation_case_ids(family)):
+            for slot in range(len(arm_specs) * 2):
+                receipt = runner_module.OutcomeAppendedReceipt._mint(
+                    runner_module._RECEIPT_TOKEN,
+                    source,
+                    "slot-{}-{}".format(case_id, slot),
+                    "outcome-{}-{}".format(case_id, slot),
+                    family,
+                    case_id,
+                    ordinal,
+                )
+                source.reveal_feedback(receipt)
+                revealed_count += 1
+                duplicate_receipt = receipt
+    with pytest.raises(ValueError, match="already revealed"):
+        source.reveal_feedback(duplicate_receipt)
+    gate = runner_module.EvaluationGate._mint(
+        runner_module._GATE_TOKEN,
+        source,
+        revealed_count,
+        revealed_count,
+        first.plan_hash,
+    )
+    source.open_evaluation(gate)
+    with pytest.raises(ValueError, match="only once"):
+        source.open_evaluation(gate)
+
+    calls_before_bound_failure = len(all_provider_arguments)
+    with monkeypatch.context() as bounded:
+        bounded.setattr(runner_module, "_MAX_CASES", 5)
+        with pytest.raises(RunnerValidationError) as bound_error:
+            once()
+    assert "case count exceeds preflight bound" in str(bound_error.value.__cause__)
+    assert len(all_provider_arguments) == calls_before_bound_failure
+
+    provider_factory_calls = []
+
+    def failing_provider_factory(repetition):
+        provider_factory_calls.append(repetition)
+        raise ValueError("sensitive provider factory detail")
+
+    with pytest.raises(RunnerError, match="provider_factory_failure") as factory_error:
+        once(provider_factory_hook=failing_provider_factory)
+    assert len(provider_factory_calls) == 1
+    assert "sensitive" not in str(factory_error.value)
+    assert "sensitive provider factory detail" in str(factory_error.value.__cause__)
+
+    def failing_utc_clock():
+        raise ValueError("sensitive clock detail")
+
+    with pytest.raises(RunnerError, match="utc_clock_failure") as clock_error:
+        once(
+            clocks_override=RunnerClocks(
+                failing_utc_clock,
+                lambda: 1.0,
+                lambda: UTC_1,
+                lambda material: "blind-" + material.split(":", 1)[1],
+            )
+        )
+    assert "sensitive" not in str(clock_error.value)
+    assert "sensitive clock detail" in str(clock_error.value.__cause__)
+
 
 UTC_1 = "2026-07-29T12:00:00Z"
 UTC_2 = "2026-07-29T12:00:00.123456Z"
