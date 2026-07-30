@@ -23,6 +23,30 @@ EXPECTED_PUBLIC_NAMES = {
     "LearningPolicy",
     "LearningSnapshot",
     "learn_utilities",
+    "TOKEN_ACCOUNTING_VERSION",
+    "PRIMARY_COMPARABILITY_FIELDS",
+    "ProviderError",
+    "ProviderCallbackError",
+    "ProviderValidationError",
+    "ProviderIdentityMismatchError",
+    "ProviderFixtureNotFoundError",
+    "TokenAccountingUnavailableError",
+    "ManifestConsistencyError",
+    "IncompatibleManifestError",
+    "ProviderConfiguration",
+    "ProviderRequest",
+    "RawTransportResult",
+    "ProviderExecution",
+    "Provider",
+    "RecordedCallbackProvider",
+    "DeterministicFakeProvider",
+    "ManifestInputs",
+    "ManifestDifference",
+    "ManifestComparison",
+    "build_run_manifest",
+    "validate_request_manifest",
+    "validate_execution",
+    "compare_manifests",
     "ExperimentRepository",
     "EvidenceEntry",
     "IntegrityReport",
@@ -140,6 +164,45 @@ def test_public_package_exports_load_and_persist_tiny_fixture(tmp_path):
             "run_manifest": 4,
         }
         assert repository.list_feedback() == feedback_events
+
+
+def test_public_package_builds_and_validates_provider_bound_manifest():
+    config = adaptive_selection.ProviderConfiguration(
+        provider="test-provider",
+        model_id="test-model",
+        provider_revision="test-revision",
+        temperature=0.0,
+        seed=0,
+        seed_supported=True,
+        tool_availability=("calculator",),
+        token_accounting_version=adaptive_selection.TOKEN_ACCOUNTING_VERSION,
+        generation_options={},
+    )
+    request = adaptive_selection.ProviderRequest(
+        prompt_text="Rendered prompt",
+        prompt_template_hash="sha256:" + "1" * 64,
+    )
+    manifest_inputs = adaptive_selection.ManifestInputs(
+        run_id="public-provider-run",
+        experiment_version="public-provider-v1",
+        protocol_version="stage0-v2",
+        dataset_version="support-v1",
+        dataset_hash="sha256:" + "2" * 64,
+        selector_mode="adaptive",
+        selector_version="selector-v1",
+        code_revision="abc123",
+        provenance="test:public-provider",
+    )
+
+    manifest = adaptive_selection.build_run_manifest(
+        manifest_inputs, config, request, lambda: "2026-07-29T12:00:00Z"
+    )
+
+    assert isinstance(manifest, adaptive_selection.RunManifest)
+    adaptive_selection.validate_request_manifest(manifest, config, request)
+    assert adaptive_selection.compare_manifests(
+        manifest, adaptive_selection.RunManifest.from_dict(manifest.to_dict())
+    ).valid_for_primary_comparison
 
 
 def test_public_package_scores_blinded_assessment_without_selector_inputs():
