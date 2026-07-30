@@ -111,7 +111,9 @@ def test_ordered_runner_public_records_and_prompt_renderer_regression():
     assert renderer.template_hash == rendered.prompt_template_hash
 
 
-def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_deterministic():
+def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_deterministic(
+    monkeypatch,
+):
     from itertools import permutations
     from pathlib import Path
 
@@ -127,6 +129,8 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
         OutcomeAppendedReceipt,
         RepetitionSpec,
         RunnerClocks,
+        RunnerError,
+        RunnerValidationError,
         Stage0OrderedDatasetSource,
         run_ordered_experiment,
     )
@@ -257,12 +261,15 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
 
     created_sources = []
     failing_assessor_calls = []
+    all_provider_arguments = []
 
     def once(
         shared_selectors=False,
         assessor_failure=False,
         selected_bundle=bundle,
         provider_fixtures=fixture_table,
+        provider_factory_hook=None,
+        clocks_override=None,
     ):
         source = Stage0OrderedDatasetSource(selected_bundle, specs)
         created_sources.append(source)
@@ -310,6 +317,9 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
 
         def provider_factory(repetition):
             provider_arguments.append(repetition)
+            all_provider_arguments.append(repetition)
+            if provider_factory_hook is not None:
+                return provider_factory_hook(repetition)
             config = configuration(seed=repetition.provider_seed)
             return DeterministicFakeProvider(
                 config,
@@ -343,7 +353,8 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
             provider_factory,
             renderer,
             assessor,
-            RunnerClocks(
+            clocks_override
+            or RunnerClocks(
                 lambda: UTC_1,
                 lambda: 1.0,
                 learning_clock,
@@ -772,6 +783,41 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
     source.open_evaluation(gate)
     with pytest.raises(ValueError, match="only once"):
         source.open_evaluation(gate)
+
+    calls_before_bound_failure = len(all_provider_arguments)
+    with monkeypatch.context() as bounded:
+        bounded.setattr(runner_module, "_MAX_CASES", 5)
+        with pytest.raises(RunnerValidationError) as bound_error:
+            once()
+    assert "case count exceeds preflight bound" in str(bound_error.value.__cause__)
+    assert len(all_provider_arguments) == calls_before_bound_failure
+
+    provider_factory_calls = []
+
+    def failing_provider_factory(repetition):
+        provider_factory_calls.append(repetition)
+        raise ValueError("sensitive provider factory detail")
+
+    with pytest.raises(RunnerError, match="provider_factory_failure") as factory_error:
+        once(provider_factory_hook=failing_provider_factory)
+    assert len(provider_factory_calls) == 1
+    assert "sensitive" not in str(factory_error.value)
+    assert "sensitive provider factory detail" in str(factory_error.value.__cause__)
+
+    def failing_utc_clock():
+        raise ValueError("sensitive clock detail")
+
+    with pytest.raises(RunnerError, match="utc_clock_failure") as clock_error:
+        once(
+            clocks_override=RunnerClocks(
+                failing_utc_clock,
+                lambda: 1.0,
+                lambda: UTC_1,
+                lambda material: "blind-" + material.split(":", 1)[1],
+            )
+        )
+    assert "sensitive" not in str(clock_error.value)
+    assert "sensitive clock detail" in str(clock_error.value.__cause__)
 
 
 UTC_1 = "2026-07-29T12:00:00Z"

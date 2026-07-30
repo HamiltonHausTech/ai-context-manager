@@ -30,10 +30,8 @@ from .providers import (
 )
 from .schema import (
     ContextItem,
-    CriterionScore,
     FeedbackEvent,
     RunManifest,
-    ScoringRubric,
     SealedEvaluation,
     SelectionDecision,
     TaskCase,
@@ -1901,13 +1899,12 @@ class _RunWork:
     events: Dict[str, list]
     appended_outcome_ids: set
     selector_instances: list
+    selector_instance_ids: set
 
 
 def _call_seam(category: str, stage: str, callback: Callable[[], Any]) -> Any:
     try:
         return callback()
-    except RunnerError:
-        raise
     except Exception as exc:
         raise RunnerError(category, stage) from exc
 
@@ -2104,9 +2101,11 @@ def _execute_slot(
     )
     if selector is None or not callable(getattr(selector, "select", None)):
         _fail("selector factory must return a fresh selector with select(inputs)")
-    if any(selector is prior for prior in work.selector_instances):
+    selector_identity = id(selector)
+    if selector_identity in work.selector_instance_ids:
         _fail("selector factory must return a fresh selector for every slot")
     work.selector_instances.append(selector)
+    work.selector_instance_ids.add(selector_identity)
     inputs = TaskInputs.from_dict(case.inputs.to_dict())
     selector_input_hash, candidate_set_hash = _visible_hashes(inputs)
     _trace(
@@ -2421,6 +2420,21 @@ def run_ordered_experiment(
             or type(clocks) is not RunnerClocks
         ):
             _fail("runtime seams are invalid")
+        supplied_clocks = clocks
+        clocks = RunnerClocks(
+            lambda: _call_seam("utc_clock_failure", stage, supplied_clocks.utc_clock),
+            lambda: _call_seam(
+                "monotonic_clock_failure", stage, supplied_clocks.monotonic_clock
+            ),
+            lambda: _call_seam(
+                "learning_clock_failure", stage, supplied_clocks.learning_clock
+            ),
+            lambda value: _call_seam(
+                "blinding_id_failure",
+                stage,
+                lambda: supplied_clocks.blinding_id(value),
+            ),
+        )
         if (
             renderer.template_hash != plan.prompt_template_hash
             or renderer.template_spec != plan.prompt_template
@@ -2439,16 +2453,21 @@ def run_ordered_experiment(
         if any(not values for values in adaptation_ids.values()):
             _fail("every family requires adaptation cases")
         total_adaptation_cases = sum(len(values) for values in adaptation_ids.values())
-        if total_adaptation_cases > _MAX_CASES:
+        total_evaluation_cases = len(plan.family_order)
+        total_cases_per_run = total_adaptation_cases + total_evaluation_cases
+        if total_cases_per_run > _MAX_CASES:
             _fail("case count exceeds preflight bound")
-        expected_slots = total_adaptation_cases * len(plan.arms) * len(plan.repetitions)
-        if expected_slots > _MAX_SLOTS:
-            _fail("slot count exceeds preflight bound")
-        estimated_trace = (
-            expected_slots * 9
-            + _MAX_CASES * len(plan.arms) * len(plan.repetitions) * 7
-            + 16
+        adaptation_slots = (
+            total_adaptation_cases * len(plan.arms) * len(plan.repetitions)
         )
+        evaluation_slots = (
+            total_evaluation_cases * len(plan.arms) * len(plan.repetitions)
+        )
+        total_slots = adaptation_slots + evaluation_slots
+        if total_slots > _MAX_SLOTS:
+            _fail("slot count exceeds preflight bound")
+        expected_slots = adaptation_slots
+        estimated_trace = adaptation_slots * 9 + evaluation_slots * 7 + 16
         if estimated_trace > _MAX_TRACE:
             _fail("trace count exceeds preflight bound")
 
@@ -2458,8 +2477,12 @@ def run_ordered_experiment(
         work_by_pair: Dict[Tuple[str, int], _RunWork] = {}
         empty_snapshots: Dict[str, LearningSnapshot] = {}
         for family in plan.family_order:
-            empty_snapshots[family] = learn_utilities(
-                [], {}, plan.learning_policy, clocks.learning_clock
+            empty_snapshots[family] = _call_seam(
+                "learning_failure",
+                stage,
+                lambda: learn_utilities(
+                    [], {}, plan.learning_policy, clocks.learning_clock
+                ),
             )
         binding_request = ProviderRequest(
             _canonical(
@@ -2473,8 +2496,12 @@ def run_ordered_experiment(
         manifests_by_rep: Dict[int, list] = {}
         for runtime in runtimes:
             for repetition in plan.repetitions:
-                provider = provider_factory(
-                    RepetitionSpec.from_dict(repetition.to_dict())
+                provider = _call_seam(
+                    "provider_factory_failure",
+                    stage,
+                    lambda: provider_factory(
+                        RepetitionSpec.from_dict(repetition.to_dict())
+                    ),
                 )
                 config = getattr(provider, "configuration", None)
                 if type(config) is not ProviderConfiguration:
@@ -2530,6 +2557,7 @@ def run_ordered_experiment(
                     {family: [] for family in plan.family_order},
                     set(),
                     [],
+                    set(),
                 )
                 work_by_pair[(runtime.spec.arm_id, repetition.repetition_index)] = work
                 manifests_by_rep.setdefault(repetition.repetition_index, []).append(
