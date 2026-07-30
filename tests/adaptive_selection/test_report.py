@@ -974,7 +974,12 @@ def test_task11_id_local_evidence_does_not_transfer_and_opaque_renaming_is_invar
                 original.context_item_id: renamed.context_item_id
                 for original, renamed in zip(original_candidates, renamed_candidates)
             }
-            assert id_bijection
+            assert len(id_bijection) == len(original_candidates)
+            assert len(set(id_bijection.values())) == len(renamed_candidates)
+            assert all(
+                original_id != renamed_id
+                for original_id, renamed_id in id_bijection.items()
+            )
             assert (
                 tuple(
                     id_bijection[context_id]
