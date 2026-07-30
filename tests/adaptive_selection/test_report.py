@@ -10,7 +10,11 @@ from typing import cast
 import pytest
 
 import experiments.adaptive_selection.report as report_module
-from experiments.adaptive_selection.dataset import load_tiny_fixture
+from experiments.adaptive_selection.dataset import (
+    DatasetBundle,
+    load_tiny_fixture,
+    validate_tiny_fixture,
+)
 from experiments.adaptive_selection.learning import LearningPolicy
 from experiments.adaptive_selection.providers import (
     TOKEN_ACCOUNTING_VERSION,
@@ -52,6 +56,7 @@ from experiments.adaptive_selection.selectors import (
     FullContextSelector,
     SimilarityTopKSelector,
     StaticPolicySelector,
+    reusable_features,
 )
 
 UTC = "2026-07-29T12:00:00Z"
@@ -87,6 +92,9 @@ def _artifact(
     first_arm_classification="reference",
     repetition_count=2,
     bundle_transform=None,
+    learning_policy=None,
+    response_rule=None,
+    step_status_rule=None,
 ):
     bundle = load_tiny_fixture(
         Path(__file__).parent / "fixtures" / "tiny_experiment.json"
@@ -143,14 +151,19 @@ def _artifact(
                 ):
                     continue
                 request = renderer.render(case.inputs, selected)
+                fixture_response = (
+                    response_rule(case, selected)
+                    if response_rule is not None
+                    else response_text
+                )
                 fixtures[request.request_hash] = RawTransportResult(
                     "recorded",
                     "model",
                     "rev",
-                    response_text,
-                    response_text.encode("utf-8") or b"empty-response",
+                    fixture_response,
+                    fixture_response.encode("utf-8") or b"empty-response",
                     10,
-                    int(bool(response_text)),
+                    int(bool(fixture_response)),
                     "req",
                 )
     arms = (
@@ -180,6 +193,11 @@ def _artifact(
 
     class Assessor:
         def assess(self, packet):
+            assessed_step_status = (
+                step_status_rule(packet)
+                if step_status_rule is not None
+                else step_status
+            )
             return BlindedAssessment(
                 packet.output_id,
                 packet.scoring_spec.rubric_id,
@@ -188,10 +206,20 @@ def _artifact(
                 tuple(
                     StepAssessment(
                         step.step_id,
-                        step_status,
+                        assessed_step_status,
                         (
-                            (EvidenceSpan(0, 6, "answer"),)
-                            if step_status == "met"
+                            (
+                                (
+                                    EvidenceSpan(
+                                        0,
+                                        len(packet.response_text),
+                                        packet.response_text,
+                                    ),
+                                )
+                                if step_status_rule is not None
+                                else (EvidenceSpan(0, 6, "answer"),)
+                            )
+                            if assessed_step_status == "met"
                             else ()
                         ),
                     )
@@ -226,7 +254,7 @@ def _artifact(
         "abc123",
         renderer.template_spec,
         renderer.template_hash,
-        LearningPolicy(),
+        learning_policy or LearningPolicy(),
         99,
         source.family_order,
         arms,
@@ -656,3 +684,327 @@ def test_adverse_effects_and_each_derived_report_surface_survive_or_reject_forge
     _rehash_report(forged_flag)
     with pytest.raises(ValueError, match="canonical derived report"):
         ExperimentReport.from_dict(forged_flag)
+
+
+TASK11_CONTROL_SPEC = (
+    Path(__file__).parents[2]
+    / "experiments"
+    / "adaptive_selection"
+    / "controls"
+    / "task11_v1.json"
+)
+TASK11_CONTROL_SPEC_SHA256 = (
+    "a8a95482b406276a5ec594322c2a52a3029022d50ab3b73cf3e6c4c7ebdb74d4"
+)
+
+
+def _task11_response(case, selected):
+    selected_ids = {item.context_item_id for item in selected}
+    required_ids = set(case.sealed_evaluation.required_context_item_ids)
+    return "complete" if required_ids.issubset(selected_ids) else "incomplete"
+
+
+def _task11_step_status(packet):
+    return "met" if packet.response_text == "complete" else "not_met"
+
+
+def _primary_means(report):
+    return {
+        item.metric: Fraction(item.mean.numerator, item.mean.denominator)
+        for item in report.primary_summaries
+        if item.family_id is None and item.mean.available
+    }
+
+
+def _rename_tiny_ids(_bundle):
+    payload = json.loads(
+        (Path(__file__).parent / "fixtures" / "tiny_experiment.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for case_index, case in enumerate(payload["cases"]):
+        mapping = {
+            item["context_item_id"]: "opaque-{}-{}".format(case_index, item_index)
+            for item_index, item in enumerate(case["inputs"]["candidate_context"])
+        }
+        for item in case["inputs"]["candidate_context"]:
+            item["context_item_id"] = mapping[item["context_item_id"]]
+        sealed = case["sealed_evaluation"]
+        for key in (
+            "required_context_item_ids",
+            "useful_context_item_ids",
+            "misleading_context_item_ids",
+            "irrelevant_context_item_ids",
+        ):
+            sealed[key] = [mapping[item] for item in sealed[key]]
+        for event in payload["adaptation_feedback"]:
+            if event["task_case_id"] != case["task_case_id"]:
+                continue
+            event["affected_context_item_ids"] = [
+                mapping[item] for item in event["affected_context_item_ids"]
+            ]
+            for key in ("useful_context_item_ids", "harmful_context_item_ids"):
+                event["structured_value"][key] = [
+                    mapping[item] for item in event["structured_value"][key]
+                ]
+    renamed = DatasetBundle.from_dict(payload)
+    validate_tiny_fixture(renamed)
+    return renamed
+
+
+def _leaky_tiny_bundle(bundle):
+    payload = bundle.to_dict()
+    heldout = next(case for case in payload["cases"] if case["split"] == "held_out")
+    heldout["inputs"]["candidate_context"][0]["metadata"]["learning_attributes"].append(
+        "tag:required"
+    )
+    return DatasetBundle.from_dict(payload)
+
+
+def test_task11_control_spec_is_frozen_before_control_execution():
+    raw = TASK11_CONTROL_SPEC.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == TASK11_CONTROL_SPEC_SHA256
+    control = json.loads(raw)
+    assert control["primary_comparison"] == {
+        "candidate_selector_mode": "adaptive_policy",
+        "estimand": "heldout-evaluation-adaptive-minus-primary-baseline-v1",
+        "primary_baseline_selector_mode": "static_policy",
+    }
+    assert [item["control_id"] for item in control["controls"]] == [
+        "known-transferable-signal-v1",
+        "no-signal-null-v1",
+        "false-advantage-leakage-v1",
+        "id-local-nontransfer-v1",
+        "opaque-id-renaming-v1",
+        "deterministic-rerun-v1",
+    ]
+    assert "SQLite regeneration remains unavailable" in control["persistence_claim"]
+
+
+def test_task11_known_signal_is_detected_through_runner_and_primary_report():
+    artifact = _artifact(
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    report = build_experiment_report(artifact, _spec())
+    means = _primary_means(report)
+    assert means["task_quality"] > 0
+    assert means["context_precision"] > 0
+    assert means["required_context_recall"] > 0
+    assert means["misleading_selected_count"] < 0
+
+    rerun = _artifact(
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    rerun_report = build_experiment_report(rerun, _spec())
+    assert artifact.canonical_bytes() == rerun.canonical_bytes()
+    assert report.canonical_bytes() == rerun_report.canonical_bytes()
+
+
+def test_task11_no_signal_preserves_exact_null_and_static_equivalence():
+    artifact = _artifact(
+        learning_policy=LearningPolicy(minimum_evidence_count=3),
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    report = build_experiment_report(artifact, _spec())
+    means = _primary_means(report)
+    assert {
+        "task_quality",
+        "context_precision",
+        "required_context_recall",
+        "misleading_selected_count",
+    }.issubset(means)
+    assert all(value == 0 for value in means.values())
+    rerun = _artifact(
+        learning_policy=LearningPolicy(minimum_evidence_count=3),
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    assert artifact.canonical_bytes() == rerun.canonical_bytes()
+    assert (
+        report.canonical_bytes()
+        == build_experiment_report(rerun, _spec()).canonical_bytes()
+    )
+    for repetition in range(2):
+        static = next(
+            run
+            for run in artifact.arm_runs
+            if run.arm_id == "static" and run.repetition_index == repetition
+        )
+        adaptive = next(
+            run
+            for run in artifact.arm_runs
+            if run.arm_id == "adaptive" and run.repetition_index == repetition
+        )
+        assert [
+            item.selection_decision.selected_context_item_ids
+            for item in adaptive.task_records
+        ] == [
+            item.selection_decision.selected_context_item_ids
+            for item in static.task_records
+        ]
+
+
+def test_task11_false_advantage_feature_leak_is_rejected_before_runner():
+    fixture = Path(__file__).parent / "fixtures" / "tiny_experiment.json"
+    leaky_bundle = _leaky_tiny_bundle(load_tiny_fixture(fixture))
+    leaky_case = next(case for case in leaky_bundle.cases if case.split == "held_out")
+    validation_errors = []
+    feature_errors = []
+    for _ in range(2):
+        with pytest.raises(
+            ValueError, match="candidate attribute is absent from ontology"
+        ) as validation_error:
+            validate_tiny_fixture(leaky_bundle)
+        validation_errors.append(str(validation_error.value))
+        with pytest.raises(
+            ValueError, match="reserved evaluation vocabulary"
+        ) as feature_error:
+            reusable_features(
+                leaky_case.inputs.candidate_context[0],
+                tuple(
+                    item.context_item_id for item in leaky_case.inputs.candidate_context
+                ),
+            )
+        feature_errors.append(str(feature_error.value))
+    assert validation_errors[0] == validation_errors[1]
+    assert feature_errors[0] == feature_errors[1]
+
+    # Deliberately bypassing the tiny-fixture preflight still cannot turn the label into
+    # adaptive utility: the full runner records candidate-local processing rejection.
+    artifact = _artifact(bundle_transform=_leaky_tiny_bundle)
+    rerun = _artifact(bundle_transform=_leaky_tiny_bundle)
+    report = build_experiment_report(artifact, _spec())
+    assert artifact.canonical_bytes() == rerun.canonical_bytes()
+    assert (
+        report.canonical_bytes()
+        == build_experiment_report(rerun, _spec()).canonical_bytes()
+    )
+    leaky_id = leaky_case.inputs.candidate_context[0].context_item_id
+    heldout_adaptive_tasks = tuple(
+        task
+        for run in artifact.arm_runs
+        if run.arm_id == "adaptive"
+        for task in run.task_records
+        if task.phase == "evaluation" and task.task_case_id == leaky_case.task_case_id
+    )
+    assert len(heldout_adaptive_tasks) == 2
+    for task in heldout_adaptive_tasks:
+        decision = next(
+            item
+            for item in task.selection_result.decisions
+            if item.context_item_id == leaky_id
+        )
+        assert decision.included is False
+        assert decision.reason == "processing_error"
+
+
+def test_task11_id_local_evidence_does_not_transfer_and_opaque_renaming_is_invariant():
+    original_artifact = _artifact(
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    original_report = build_experiment_report(original_artifact, _spec())
+    renamed_artifact = _artifact(
+        bundle_transform=_rename_tiny_ids,
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    renamed_report = build_experiment_report(renamed_artifact, _spec())
+    renamed_rerun = _artifact(
+        bundle_transform=_rename_tiny_ids,
+        response_rule=_task11_response,
+        step_status_rule=_task11_step_status,
+    )
+    assert renamed_artifact.canonical_bytes() == renamed_rerun.canonical_bytes()
+    assert (
+        renamed_report.canonical_bytes()
+        == build_experiment_report(renamed_rerun, _spec()).canonical_bytes()
+    )
+
+    assert original_report.id_local_outcome_ablation_available is False
+    assert renamed_report.id_local_outcome_ablation_available is False
+    original_means = _primary_means(original_report)
+    renamed_means = _primary_means(renamed_report)
+    assert {
+        "task_quality",
+        "context_precision",
+        "required_context_recall",
+        "misleading_selected_count",
+    }.issubset(original_means)
+    assert original_means == renamed_means
+
+    original_feature_estimates = [
+        estimate.to_dict()
+        for evidence in original_report.learning_evidence
+        for estimate in evidence.estimates
+        if estimate.estimate_kind == "feature"
+    ]
+    renamed_feature_estimates = [
+        estimate.to_dict()
+        for evidence in renamed_report.learning_evidence
+        for estimate in evidence.estimates
+        if estimate.estimate_kind == "feature"
+    ]
+    assert original_feature_estimates
+    assert original_feature_estimates == renamed_feature_estimates
+
+    for original_run in original_artifact.arm_runs:
+        renamed_run = next(
+            run
+            for run in renamed_artifact.arm_runs
+            if run.arm_id == original_run.arm_id
+            and run.repetition_index == original_run.repetition_index
+        )
+        assert len(original_run.task_records) == len(renamed_run.task_records)
+        for original_task, renamed_task in zip(
+            original_run.task_records, renamed_run.task_records
+        ):
+            assert original_task.task_case_id == renamed_task.task_case_id
+            original_candidates = (
+                original_task.case_material.task_case.inputs.candidate_context
+            )
+            renamed_candidates = (
+                renamed_task.case_material.task_case.inputs.candidate_context
+            )
+            assert len(original_candidates) == len(renamed_candidates)
+            id_bijection = {
+                original.context_item_id: renamed.context_item_id
+                for original, renamed in zip(original_candidates, renamed_candidates)
+            }
+            assert len(id_bijection) == len(original_candidates)
+            assert len(set(id_bijection.values())) == len(renamed_candidates)
+            assert all(
+                original_id != renamed_id
+                for original_id, renamed_id in id_bijection.items()
+            )
+            assert (
+                tuple(
+                    id_bijection[context_id]
+                    for context_id in original_task.selection_decision.selected_context_item_ids
+                )
+                == renamed_task.selection_decision.selected_context_item_ids
+            )
+
+    for artifact in (original_artifact, renamed_artifact):
+        for run in artifact.arm_runs:
+            if run.arm_id != "adaptive":
+                continue
+            for task in run.task_records:
+                if task.phase != "evaluation":
+                    continue
+                heldout_ids = {
+                    item.context_item_id
+                    for item in task.case_material.task_case.inputs.candidate_context
+                }
+                id_local_targets = {
+                    item["context_item_id"]
+                    for item in task.learning_state_before.snapshot_payload[
+                        "id_local_estimates"
+                    ]
+                }
+                assert heldout_ids
+                assert id_local_targets
+                assert heldout_ids.isdisjoint(id_local_targets)

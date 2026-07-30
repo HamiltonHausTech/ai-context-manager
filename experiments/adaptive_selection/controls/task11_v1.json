@@ -1,0 +1,72 @@
+{
+  "claim_scope": "Deterministic positive, null, leakage, memorization, and ID-renaming controls validate falsification mechanics only; they do not establish hosted-model efficacy, natural-feedback causality, provider authenticity, economic benefit, production readiness, or safety.",
+  "control_version": "task11-deterministic-falsification-v1",
+  "decision_gate": {
+    "continue": "Authorize only a bounded frozen real-model trial when every control passes and the known-signal report shows positive task quality, context precision, and required-context recall effects plus fewer misleading selections than the static baseline.",
+    "simplify_or_stop": "Do not fund a real-model trial when the known signal is missed, the null becomes nonzero, leakage executes, ID-local evidence affects held-out selection, opaque renaming changes reusable-feature transfer, or reruns differ. Passing controls alone does not authorize the larger corpus or adaptive product work."
+  },
+  "primary_comparison": {
+    "candidate_selector_mode": "adaptive_policy",
+    "estimand": "heldout-evaluation-adaptive-minus-primary-baseline-v1",
+    "primary_baseline_selector_mode": "static_policy"
+  },
+  "controls": [
+    {
+      "control_id": "known-transferable-signal-v1",
+      "expected": {
+        "context_precision": "positive",
+        "misleading_selected_count": "negative",
+        "required_context_recall": "positive",
+        "task_quality": "positive"
+      },
+      "mechanism": "Use the frozen oracle feedback and feature learner. A condition-independent fake provider returns a fully correct response exactly when the selected context contains every sealed required item; blinded deterministic assessment maps that response to the frozen rubric.",
+      "phase": "evaluation"
+    },
+    {
+      "control_id": "no-signal-null-v1",
+      "expected": {
+        "all_available_primary_effects": "zero",
+        "adaptive_selection": "identical_to_static"
+      },
+      "mechanism": "Raise the prospective minimum evidence threshold above the two-event adaptation prefix so no reusable utility activates; the adaptive selector must reduce exactly to static mechanics.",
+      "phase": "evaluation"
+    },
+    {
+      "control_id": "false-advantage-leakage-v1",
+      "expected": {
+        "execution": "rejected_before_runner"
+      },
+      "mechanism": "Inject sealed evaluation-label vocabulary into an otherwise selector-visible held-out reusable feature and require the existing schema/feature boundary to reject it.",
+      "phase": "preflight"
+    },
+    {
+      "control_id": "id-local-nontransfer-v1",
+      "expected": {
+        "heldout_selection_uses_id_local_estimates": false,
+        "id_local_outcome_ablation_available": false
+      },
+      "mechanism": "Retain ID-local estimates as descriptive evidence only and require every held-out candidate ID to be disjoint from learned adaptation-local estimate targets.",
+      "phase": "evaluation"
+    },
+    {
+      "control_id": "opaque-id-renaming-v1",
+      "expected": {
+        "primary_metric_projection": "identical",
+        "reusable_feature_estimates": "identical",
+        "selected_ids": "same_under_bijection"
+      },
+      "mechanism": "Apply a deterministic opaque bijection to every context ID and all linked sealed/feedback references, rerun the complete runner/report path, and compare mapped selections plus report-level metrics.",
+      "phase": "evaluation"
+    },
+    {
+      "control_id": "deterministic-rerun-v1",
+      "expected": {
+        "artifact_bytes": "identical",
+        "report_bytes": "identical"
+      },
+      "mechanism": "Repeat each executable control with identical frozen inputs and clocks through the public Task 9 and Task 10 entrypoints.",
+      "phase": "all"
+    }
+  ],
+  "persistence_claim": "SQLite regeneration remains unavailable in Task 11 because no complete persisted projection of OrderedExperimentArtifact with source-feedback/run-local reveal linkage is implemented."
+}
