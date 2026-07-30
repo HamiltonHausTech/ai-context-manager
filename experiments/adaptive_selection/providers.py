@@ -31,7 +31,7 @@ from typing import (
     cast,
 )
 
-from .schema import RunManifest, SCHEMA_VERSION
+from .schema import RunManifest
 
 TOKEN_ACCOUNTING_VERSION = "provider-reported-usage-v1"
 PRIMARY_COMPARABILITY_FIELDS = (
@@ -312,6 +312,15 @@ def _utc(value: ClockValue, name: str = "timestamp") -> str:
             _fail(f"{name} must be canonical UTC")
         return cast(str, value)
     _fail(f"{name} must be canonical UTC ending Z")
+
+
+def _validate_utc_chronology(started_timestamp: str, completed_timestamp: str) -> None:
+    def parse(value: str) -> datetime:
+        date_format = "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+        return datetime.strptime(value, date_format).replace(tzinfo=timezone.utc)
+
+    if parse(completed_timestamp) < parse(started_timestamp):
+        _fail("completed_timestamp must be at or after started_timestamp")
 
 
 def _monotonic(value: Any, name: str) -> float:
@@ -635,6 +644,7 @@ def _derive_provider_execution(
     )
     captured_started = _utc(started_timestamp, "started_timestamp")
     captured_completed = _utc(completed_timestamp, "completed_timestamp")
+    _validate_utc_chronology(captured_started, captured_completed)
     captured_latency = _number("latency_ms", latency_ms)
     if captured_latency < 0:
         _fail("latency_ms must be nonnegative")
@@ -712,6 +722,7 @@ class RecordedCallbackProvider:
             monotonic_end = _monotonic(self._monotonic_clock(), "monotonic_end")
             if monotonic_end < monotonic_start:
                 _fail("monotonic_end must be >= monotonic_start")
+            _validate_utc_chronology(started_timestamp, completed_timestamp)
             raise ProviderCallbackError(
                 "provider_callback_exception",
                 started_timestamp,

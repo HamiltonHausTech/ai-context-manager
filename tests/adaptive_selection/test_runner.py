@@ -587,6 +587,37 @@ def test_datetime_clock_is_rendered_as_seconds_or_exactly_six_fractional_digits(
     assert execution_result.completed_timestamp == "2026-07-29T12:00:00.000001Z"
 
 
+def test_execution_rejects_wall_clock_completion_before_start():
+    utc_values = iter(("2026-07-29T12:00:01Z", "2026-07-29T12:00:00Z"))
+    with pytest.raises(ProviderValidationError, match="completed_timestamp"):
+        RecordedCallbackProvider(
+            configuration(),
+            lambda actual_config, actual: transport(),
+            utc_values.__next__,
+            iter((1.0, 2.0)).__next__,
+        ).execute(request())
+
+    valid = execution()
+    payload = valid.to_dict()
+    payload["completed_timestamp"] = "2026-07-29T11:59:59Z"
+    with pytest.raises(ProviderValidationError, match="completed_timestamp"):
+        ProviderExecution.from_dict(payload)
+
+
+def test_callback_failure_rejects_wall_clock_completion_before_start():
+    def fail(actual_config, actual):
+        raise RuntimeError("transport failed")
+
+    utc_values = iter(("2026-07-29T12:00:01Z", "2026-07-29T12:00:00Z"))
+    with pytest.raises(ProviderValidationError, match="completed_timestamp"):
+        RecordedCallbackProvider(
+            configuration(),
+            fail,
+            utc_values.__next__,
+            iter((1.0, 2.0)).__next__,
+        ).execute(request())
+
+
 def test_fake_provider_routes_only_by_request_hash_and_is_order_independent():
     first = request(prompt_text="first")
     second = request(prompt_text="second")
