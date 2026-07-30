@@ -1839,6 +1839,11 @@ class OrderedExperimentArtifact(CanonicalRunnerRecord):
         completed_timestamp = _utc_timestamp("completed_timestamp", completed_timestamp)
         if any(item.completed_timestamp != completed_timestamp for item in runs):
             _fail("run and artifact completion timestamps must match")
+        if any(
+            _timestamp_value(item.timestamp) > _timestamp_value(completed_timestamp)
+            for item in trace
+        ):
+            _fail("artifact completion must not precede phase trace events")
         result = object.__new__(cls)
         values = {
             "artifact_version": ARTIFACT_VERSION,
@@ -2624,6 +2629,7 @@ def run_ordered_experiment(
         _trace(trace, "EVALUATION", "evaluation_completed")
 
         stage = "complete"
+        _trace(trace, "COMPLETE", "experiment_completed")
         completed_timestamp = clocks.utc_clock()
         arm_runs = []
         for runtime in runtimes:
@@ -2641,7 +2647,6 @@ def run_ordered_experiment(
                         completed_timestamp,
                     )
                 )
-        _trace(trace, "COMPLETE", "experiment_completed")
         artifact = OrderedExperimentArtifact._derive(
             _ARTIFACT_TOKEN, plan, tuple(arm_runs), tuple(trace), completed_timestamp
         )

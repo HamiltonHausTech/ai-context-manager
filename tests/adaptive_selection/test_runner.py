@@ -710,6 +710,18 @@ def test_ordered_runner_tiny_fixture_all_modes_two_repetitions_is_byte_determini
             first.completed_timestamp,
         )
 
+    future_trace = first.phase_trace[:-1] + (
+        replace(first.phase_trace[-1], timestamp=UTC_2),
+    )
+    with pytest.raises(ValueError, match="completion must not precede"):
+        runner_module.OrderedExperimentArtifact._derive(
+            runner_module._ARTIFACT_TOKEN,
+            first.plan,
+            first.arm_runs,
+            future_trace,
+            first.completed_timestamp,
+        )
+
     with pytest.raises(TypeError):
         runner_module.OutcomeAppendedReceipt()
     with pytest.raises(TypeError):
