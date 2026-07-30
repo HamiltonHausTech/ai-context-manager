@@ -1,6 +1,7 @@
 import copy
 from collections.abc import Sequence
 from dataclasses import FrozenInstanceError, dataclass, replace
+from decimal import Context, ROUND_HALF_EVEN, localcontext
 from inspect import signature
 
 import pytest
@@ -352,6 +353,7 @@ def test_artifact_round_trips_and_contains_complete_arithmetic():
         "deduction_points": "1.5",
         "raw_points": "1.5",
         "normalized": "0.5",
+        "decimal_precision": 28,
     }
     assert payload["engine_version"] == "deterministic-blinded-v1"
     assert type(result).from_dict(payload) == result
@@ -432,13 +434,13 @@ def test_public_tuple_fields_reject_iterators_without_iteration():
         lambda value: assessment(findings=value),
         lambda value: assessment(corrections=value),
         lambda value: CriterionArithmetic(
-            "accuracy", value, (), (), "1", "0", "0", "0", "0"
+            "accuracy", value, (), (), "1", "0", "0", "0", "0", 28
         ),
         lambda value: CriterionArithmetic(
-            "accuracy", (), value, (), "1", "0", "0", "0", "0"
+            "accuracy", (), value, (), "1", "0", "0", "0", "0", 28
         ),
         lambda value: CriterionArithmetic(
-            "accuracy", (), (), value, "1", "0", "0", "0", "0"
+            "accuracy", (), (), value, "1", "0", "0", "0", "0", 28
         ),
     )
     for factory in factories:
@@ -485,7 +487,7 @@ def test_public_tuple_fields_reject_iterators_without_iteration():
         (lambda value: assessment(corrections=value), [object()] * 257, "corrections"),
         (
             lambda value: CriterionArithmetic(
-                "accuracy", value, (), (), "1", "0", "0", "0", "0"
+                "accuracy", value, (), (), "1", "0", "0", "0", "0", 28
             ),
             [object()] * 129,
             "met_step_ids",
@@ -505,7 +507,7 @@ def test_public_tuple_fields_accept_exact_lists_and_tuples():
     assert TaskScoringSpec.from_dict(spec().to_dict()) == spec()
     assert BlindedAssessment.from_dict(assessment().to_dict()) == assessment()
     arithmetic = CriterionArithmetic(
-        "accuracy", ["met"], ("missed",), [], "1", "1", "0", "1", "1"
+        "accuracy", ["met"], ("missed",), [], "1", "1", "0", "1", "1", 28
     )
     assert arithmetic.met_step_ids == ("met",)
     assert arithmetic.no_credit_step_ids == ("missed",)
@@ -714,3 +716,196 @@ def test_deterministic_decimal_resource_bounds_reject_before_arithmetic():
     result = score_assessment(rubric(), repeating, repeating_assessment)
     assert len(result.criterion_arithmetic[0].normalized) == 66
     assert result.normalized_score_decimal is not None
+
+
+def test_criterion_arithmetic_is_context_independent_and_exactly_normalized():
+    arithmetic = CriterionArithmetic(
+        "accuracy", (), (), (), "2", "1", "0", "1", "0.5", 64
+    )
+    with localcontext(Context(prec=16, rounding=ROUND_HALF_EVEN)):
+        assert CriterionArithmetic.from_dict(arithmetic.to_dict()) == arithmetic
+
+    with pytest.raises(ValueError, match="normalized"):
+        CriterionArithmetic("accuracy", (), (), (), "2", "1", "0", "1", "0.9", 64)
+
+
+def test_64_digit_scorer_arithmetic_round_trips_under_small_ambient_context():
+    repeating = spec(
+        decimal_precision=64,
+        required_steps=(
+            RequiredStepSpec("one", "accuracy", "1", False),
+            RequiredStepSpec("two", "accuracy", "2", False),
+            RequiredStepSpec("safe", "safety", "1", False),
+        ),
+        negative_findings=(),
+    )
+    scored = score_assessment(
+        rubric(),
+        repeating,
+        assessment(
+            steps=(
+                StepAssessment("one", "met", evidence("one")),
+                StepAssessment("two", "not_met", ()),
+                StepAssessment("safe", "met", evidence("safe")),
+            ),
+            findings=(),
+        ),
+    )
+    payload = scored.to_dict()
+    with localcontext(Context(prec=16, rounding=ROUND_HALF_EVEN)):
+        assert ScoringResult.from_dict(payload) == scored
+
+    arithmetic = payload["criterion_arithmetic"][0]
+    arithmetic["decimal_precision"] = 16
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+
+def test_evidence_and_assessment_global_resource_budgets_use_shared_objects():
+    with pytest.raises(ValueError, match="quote is too long"):
+        EvidenceSpan(0, 4097, "x" * 4097)
+
+    span = EvidenceSpan(0, 1, "x")
+    shared_evidence = (span,) * 256
+    corrections = tuple(
+        CorrectionAssessment("correction-{}".format(index), "fixed", shared_evidence)
+        for index in range(9)
+    )
+    with pytest.raises(ValueError, match="total evidence spans"):
+        assessment(corrections=corrections)
+
+    long_span = EvidenceSpan(0, 4096, "x" * 4096)
+    shared_long_evidence = (long_span, long_span)
+    corrections = tuple(
+        CorrectionAssessment(
+            "long-correction-{}".format(index), "fixed", shared_long_evidence
+        )
+        for index in range(129)
+    )
+    with pytest.raises(ValueError, match="total evidence quote characters"):
+        assessment(corrections=corrections)
+
+
+@pytest.mark.parametrize(
+    "factory, match",
+    [
+        (lambda: RequiredStepSpec("i" * 257, "accuracy", "1", False), "stable"),
+        (
+            lambda: CorrectionAssessment("c", "x" * 16385, evidence()),
+            "description",
+        ),
+        (lambda: spec(provenance="x" * 16385), "provenance"),
+        (lambda: spec(engine_version="x" * 16385), "engine_version"),
+    ],
+)
+def test_scoring_record_free_strings_are_bounded(factory, match):
+    with pytest.raises(ValueError, match=match):
+        factory()
+
+
+@pytest.mark.parametrize(
+    "mutate, match",
+    [
+        (lambda value: object.__setattr__(value, "rubric_id", "r" * 257), "rubric_id"),
+        (
+            lambda value: object.__setattr__(value, "instructions", "x" * 65537),
+            "instructions",
+        ),
+        (
+            lambda value: object.__setattr__(
+                value.criteria[0], "description", "x" * 16385
+            ),
+            "description",
+        ),
+        (
+            lambda value: object.__setattr__(value, "provenance", "x" * 16385),
+            "provenance",
+        ),
+    ],
+)
+def test_rubric_preflight_rejects_mutated_unbounded_text(mutate, match):
+    value = rubric()
+    mutate(value)
+    with pytest.raises(ValueError, match=match):
+        score_assessment(value, spec(), assessment())
+
+
+def test_rubric_preflight_enforces_total_text_budget():
+    criteria = tuple(
+        RubricCriterion("criterion-{}".format(index), "x" * 16384, 1.0)
+        for index in range(64)
+    )
+    value = ScoringRubric("rubric-1", "i", criteria, "p")
+    matching_spec = spec(
+        expected_criterion_ids=tuple(item.criterion_id for item in criteria),
+        required_steps=tuple(
+            RequiredStepSpec("step-{}".format(index), item.criterion_id, "1", False)
+            for index, item in enumerate(criteria)
+        ),
+        negative_findings=(),
+    )
+    with pytest.raises(ValueError, match="total rubric text"):
+        score_assessment(value, matching_spec, assessment())
+
+
+def test_scoring_result_from_dict_rejects_deep_json_before_recursion():
+    payload = score_assessment(rubric(), spec(), assessment()).to_dict()
+    unexpected = []
+    cursor = unexpected
+    for _ in range(1500):
+        child = []
+        cursor.append(child)
+        cursor = child
+    payload["unexpected"] = unexpected
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+    payload = score_assessment(rubric(), spec(), assessment()).to_dict()
+    deep = []
+    cursor = deep
+    for _ in range(1500):
+        child = []
+        cursor.append(child)
+        cursor = child
+    payload["criterion_scores"] = deep
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+
+def test_whole_artifact_text_budget_applies_to_score_inputs_and_payloads():
+    shared_description = "x" * 16384
+    shared_evidence = evidence("x")
+    corrections = tuple(
+        CorrectionAssessment(
+            "budget-correction-{}".format(index),
+            shared_description,
+            shared_evidence,
+        )
+        for index in range(256)
+    )
+    with pytest.raises(ValueError, match="text budget"):
+        score_assessment(rubric(), spec(), assessment(corrections=corrections))
+
+    payload = score_assessment(rubric(), spec(), assessment()).to_dict()
+    payload["criterion_scores"] = ["x" * (4 * 1024 * 1024 + 1)]
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+
+def test_scoring_result_json_preflight_requires_exact_containers_and_node_budget():
+    class CustomDict(dict):
+        pass
+
+    canonical = score_assessment(rubric(), spec(), assessment()).to_dict()
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(CustomDict(canonical))
+
+    payload = copy.deepcopy(canonical)
+    payload["criterion_scores"] = tuple(payload["criterion_scores"])
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
+
+    payload = copy.deepcopy(canonical)
+    payload["criterion_scores"] = [None] * 100001
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)

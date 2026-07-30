@@ -10,10 +10,11 @@ from dataclasses import dataclass, fields, is_dataclass
 from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 import hashlib
 import json
+import math
 import re
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
-from .schema import CriterionScore, ScoringRubric
+from .schema import CriterionScore, RubricCriterion, ScoringRubric
 
 T = TypeVar("T", bound="CanonicalRecord")
 _DECIMAL_RE = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]*[1-9])?$")
@@ -28,16 +29,33 @@ _MAX_RULES = 128
 _MAX_CORRECTIONS = 256
 _MAX_EVIDENCE_SPANS = 256
 _MAX_RESPONSE_OFFSET = 10_000_000
-_MAX_QUOTE_LENGTH = 100_000
+_MAX_QUOTE_LENGTH = 4_096
+_MAX_IDENTIFIER_LENGTH = 256
+_MAX_GENERAL_TEXT = 16_384
+_MAX_TOTAL_EVIDENCE_SPANS = 2_048
+_MAX_TOTAL_QUOTE_CHARACTERS = 1_000_000
+_MAX_RUBRIC_INSTRUCTIONS = 64 * 1_024
+_MAX_RUBRIC_TEXT = 1 * 1_024 * 1_024
+_MAX_ARTIFACT_DEPTH = 32
+_MAX_ARTIFACT_NODES = 100_000
+_MAX_ARTIFACT_TEXT = 4 * 1_024 * 1_024
 
 
 def _nonempty(name: str, value: Any) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("{} must be nonempty".format(name))
+    if len(value) > _MAX_GENERAL_TEXT:
+        raise ValueError(
+            "{} must be at most {} characters".format(name, _MAX_GENERAL_TEXT)
+        )
 
 
 def _identifier(name: str, value: Any) -> None:
-    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
+    if (
+        not isinstance(value, str)
+        or len(value) > _MAX_IDENTIFIER_LENGTH
+        or not _ID_RE.fullmatch(value)
+    ):
         raise ValueError("{} must be a stable nonempty ID".format(name))
 
 
@@ -89,7 +107,12 @@ def _derived_decimal(name: str, value: Any, positive: bool = False) -> Decimal:
     if not _DECIMAL_RE.fullmatch(value):
         raise ValueError("{} must be canonical decimal text".format(name))
     parsed = Decimal(value)
-    if not parsed.is_finite() or parsed < 0 or (positive and parsed <= 0):
+    if (
+        not parsed.is_finite()
+        or parsed < 0
+        or parsed > _MAX_DECIMAL
+        or (positive and parsed <= 0)
+    ):
         raise ValueError("{} is out of range".format(name))
     return parsed
 
@@ -114,6 +137,57 @@ def _serialize(value: Any) -> Any:
     if value is None or type(value) in (bool, int, float, str):
         return value
     raise TypeError("non-serializable value: {}".format(type(value).__name__))
+
+
+def _tree_preflight(value: Any, *, json_only: bool) -> None:
+    """Iteratively bound a JSON or dataclass artifact before recursive work."""
+
+    nodes = 0
+    text_characters = 0
+    stack = [(value, 0)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if nodes > _MAX_ARTIFACT_NODES:
+            raise ValueError("artifact exceeds the node budget")
+        if depth > _MAX_ARTIFACT_DEPTH:
+            raise ValueError("artifact exceeds the nesting depth budget")
+
+        if type(item) is str:
+            text_characters += len(item)
+        elif item is None or type(item) in (bool, int):
+            pass
+        elif type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError("artifact numbers must be finite")
+        elif type(item) is dict:
+            if len(item) > _MAX_ARTIFACT_NODES - nodes - len(stack):
+                raise ValueError("artifact exceeds the node budget")
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("artifact object keys must be exact strings")
+                text_characters += len(key)
+                stack.append((child, depth + 1))
+        elif type(item) is list or (not json_only and type(item) is tuple):
+            if len(item) > _MAX_ARTIFACT_NODES - nodes - len(stack):
+                raise ValueError("artifact exceeds the node budget")
+            stack.extend((child, depth + 1) for child in item)
+        elif not json_only and is_dataclass(item) and not isinstance(item, type):
+            item_fields = fields(item)
+            if len(item_fields) > _MAX_ARTIFACT_NODES - nodes - len(stack):
+                raise ValueError("artifact exceeds the node budget")
+            stack.extend(
+                (getattr(item, item_field.name), depth + 1)
+                for item_field in item_fields
+            )
+        else:
+            qualifier = "JSON " if json_only else ""
+            raise ValueError(
+                "artifact contains a non-canonical {}value".format(qualifier)
+            )
+
+        if text_characters > _MAX_ARTIFACT_TEXT:
+            raise ValueError("artifact exceeds the text budget")
 
 
 def _mapping(data: Any) -> Mapping:
@@ -148,6 +222,7 @@ def _sequence(data: Mapping, key: str, maximum: int) -> Tuple[Any, ...]:
 
 
 def _hash(payload: Mapping) -> str:
+    _tree_preflight(payload, json_only=True)
     encoded = json.dumps(
         _serialize(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -519,6 +594,26 @@ class BlindedAssessment(CanonicalRecord):
         object.__setattr__(self, "step_assessments", step_assessments)
         object.__setattr__(self, "finding_assessments", finding_assessments)
         object.__setattr__(self, "corrections", corrections)
+        evidence_groups = tuple(
+            item.supporting_evidence
+            for item in step_assessments + finding_assessments + corrections
+        )
+        total_spans = sum(len(group) for group in evidence_groups)
+        if total_spans > _MAX_TOTAL_EVIDENCE_SPANS:
+            raise ValueError(
+                "total evidence spans must be at most {}".format(
+                    _MAX_TOTAL_EVIDENCE_SPANS
+                )
+            )
+        total_quote_characters = sum(
+            len(span.quote) for group in evidence_groups for span in group
+        )
+        if total_quote_characters > _MAX_TOTAL_QUOTE_CHARACTERS:
+            raise ValueError(
+                "total evidence quote characters must be at most {}".format(
+                    _MAX_TOTAL_QUOTE_CHARACTERS
+                )
+            )
         correction_ids = tuple(item.correction_id for item in self.corrections)
         if len(set(correction_ids)) != len(correction_ids):
             raise ValueError("correction IDs must be unique")
@@ -577,9 +672,16 @@ class CriterionArithmetic(CanonicalRecord):
     deduction_points: str
     raw_points: str
     normalized: str
+    decimal_precision: int
 
     def __post_init__(self) -> None:
         _identifier("criterion_id", self.criterion_id)
+        if (
+            not isinstance(self.decimal_precision, int)
+            or isinstance(self.decimal_precision, bool)
+            or not _MIN_PRECISION <= self.decimal_precision <= _MAX_PRECISION
+        ):
+            raise ValueError("decimal_precision must be between 16 and 64")
         for name in ("met_step_ids", "no_credit_step_ids", "present_finding_ids"):
             value = _bounded_tuple(name, getattr(self, name), _MAX_RULES, str)
             if len(set(value)) != len(value):
@@ -592,12 +694,23 @@ class CriterionArithmetic(CanonicalRecord):
         deduction = _derived_decimal("deduction_points", self.deduction_points)
         raw = _derived_decimal("raw_points", self.raw_points)
         normalized = _derived_decimal("normalized", self.normalized)
-        if raw != max(Decimal("0"), min(maximum, met - deduction)):
+        try:
+            with localcontext(
+                Context(prec=self.decimal_precision, rounding=ROUND_HALF_EVEN)
+            ):
+                recomputed_raw = max(Decimal("0"), min(maximum, met - deduction))
+                recomputed_normalized = recomputed_raw / maximum
+        except (InvalidOperation, ZeroDivisionError):
+            raise ValueError("criterion arithmetic cannot be recomputed exactly")
+        if self.raw_points != _decimal_text(recomputed_raw) or raw != recomputed_raw:
             raise ValueError(
-                "raw_points must equal clamped met_points minus deductions"
+                "raw_points must equal canonical clamped met_points minus deductions"
             )
-        if normalized > 1:
-            raise ValueError("normalized must be between 0 and 1")
+        if (
+            self.normalized != _decimal_text(recomputed_normalized)
+            or normalized != recomputed_normalized
+        ):
+            raise ValueError("normalized must equal canonical raw_points / max_points")
 
     @classmethod
     def from_dict(cls, data: Mapping) -> "CriterionArithmetic":
@@ -679,7 +792,12 @@ class ScoringResult(CanonicalRecord):
     @classmethod
     def from_dict(cls, data: Mapping) -> "ScoringResult":
         try:
-            data = _mapping(data)
+            if type(data) is not dict:
+                raise ValueError
+            expected = {item.name for item in fields(cls)}
+            if set(data) != expected:
+                raise ValueError
+            _tree_preflight(data, json_only=True)
             rubric_value = data.get("rubric")
             spec_value = data.get("spec")
             assessment_value = data.get("assessment")
@@ -690,24 +808,110 @@ class ScoringResult(CanonicalRecord):
             if _serialize(data) != derived.to_dict():
                 raise ValueError
             return derived
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, RecursionError, TypeError, ValueError):
             raise ValueError("payload is not an exact canonical derived scoring result")
+
+
+def _canonical_rubric(rubric: ScoringRubric) -> ScoringRubric:
+    """Bound the externally-defined rubric before copying or hashing it."""
+
+    if not isinstance(rubric, ScoringRubric):
+        raise ValueError("rubric must be a ScoringRubric")
+    if type(rubric.rubric_id) is not str:
+        raise ValueError("rubric_id must be an exact string")
+    _identifier("rubric_id", rubric.rubric_id)
+    if (
+        type(rubric.instructions) is not str
+        or not rubric.instructions.strip()
+        or len(rubric.instructions) > _MAX_RUBRIC_INSTRUCTIONS
+    ):
+        raise ValueError(
+            "instructions must be nonempty and at most {} characters".format(
+                _MAX_RUBRIC_INSTRUCTIONS
+            )
+        )
+    for name in ("provenance", "schema_version"):
+        if type(getattr(rubric, name)) is not str:
+            raise ValueError("{} must be an exact string".format(name))
+        _nonempty(name, getattr(rubric, name))
+    criteria = _bounded_tuple(
+        "rubric criteria", rubric.criteria, _MAX_CRITERIA, RubricCriterion
+    )
+    if not criteria:
+        raise ValueError("rubric criteria must not be empty")
+    criterion_payloads = []
+    total_text = (
+        len(rubric.rubric_id)
+        + len(rubric.instructions)
+        + len(rubric.provenance)
+        + len(rubric.schema_version)
+    )
+    for criterion in criteria:
+        for name in ("criterion_id", "description", "schema_version"):
+            if type(getattr(criterion, name)) is not str:
+                raise ValueError("{} must be an exact string".format(name))
+        _identifier("criterion_id", criterion.criterion_id)
+        _nonempty("description", criterion.description)
+        _nonempty("schema_version", criterion.schema_version)
+        if (
+            type(criterion.weight) not in (int, float)
+            or isinstance(criterion.weight, bool)
+            or criterion.weight <= 0
+            or criterion.weight > _MAX_DECIMAL
+            or not math.isfinite(float(criterion.weight))
+        ):
+            raise ValueError("rubric weight must be positive and finite")
+        total_text += (
+            len(criterion.criterion_id)
+            + len(criterion.description)
+            + len(criterion.schema_version)
+        )
+        if total_text > _MAX_RUBRIC_TEXT:
+            raise ValueError(
+                "total rubric text must be at most {} characters".format(
+                    _MAX_RUBRIC_TEXT
+                )
+            )
+        criterion_payloads.append(
+            {
+                "criterion_id": criterion.criterion_id,
+                "description": criterion.description,
+                "weight": criterion.weight,
+                "schema_version": criterion.schema_version,
+            }
+        )
+    payload = {
+        "rubric_id": rubric.rubric_id,
+        "instructions": rubric.instructions,
+        "criteria": criterion_payloads,
+        "provenance": rubric.provenance,
+        "schema_version": rubric.schema_version,
+    }
+    _tree_preflight(payload, json_only=True)
+    return ScoringRubric.from_dict(payload)
 
 
 def _canonical_inputs(
     rubric: ScoringRubric, spec: TaskScoringSpec, assessment: BlindedAssessment
 ) -> Tuple[ScoringRubric, TaskScoringSpec, BlindedAssessment]:
-    if not isinstance(rubric, ScoringRubric):
-        raise ValueError("rubric must be a ScoringRubric")
     if not isinstance(spec, TaskScoringSpec):
         raise ValueError("spec must be a TaskScoringSpec")
     if not isinstance(assessment, BlindedAssessment):
         raise ValueError("assessment must be a BlindedAssessment")
-    return (
-        ScoringRubric.from_dict(rubric.to_dict()),
-        TaskScoringSpec.from_dict(spec.to_dict()),
-        BlindedAssessment.from_dict(assessment.to_dict()),
+    _tree_preflight((spec, assessment), json_only=False)
+    canonical = (
+        _canonical_rubric(rubric),
+        TaskScoringSpec.from_dict(_serialize(spec)),
+        BlindedAssessment.from_dict(_serialize(assessment)),
     )
+    _tree_preflight(canonical, json_only=False)
+    return canonical
+
+
+def _bounded_scoring_result(**values: Any) -> ScoringResult:
+    result = ScoringResult._from_scorer(_SCORING_RESULT_TOKEN, **values)
+    _tree_preflight(result, json_only=False)
+    return result
 
 
 def score_assessment(
@@ -812,8 +1016,7 @@ def score_assessment(
         + [item for item in finding_ids if finding_by_id[item].status == "unresolved"]
     )
     if unresolved:
-        return ScoringResult._from_scorer(
-            _SCORING_RESULT_TOKEN,
+        return _bounded_scoring_result(
             status="needs_adjudication",
             criterion_scores=(),
             criterion_arithmetic=(),
@@ -908,6 +1111,7 @@ def score_assessment(
                     _decimal_text(deduction),
                     _decimal_text(raw),
                     _decimal_text(normalized),
+                    spec.decimal_precision,
                 )
             )
             weighted += weight * normalized
@@ -963,8 +1167,7 @@ def score_assessment(
         final_text = _decimal_text(final)
         base_text = _decimal_text(base)
 
-    return ScoringResult._from_scorer(
-        _SCORING_RESULT_TOKEN,
+    return _bounded_scoring_result(
         status="scored",
         criterion_scores=tuple(criterion_scores),
         criterion_arithmetic=tuple(arithmetic),
