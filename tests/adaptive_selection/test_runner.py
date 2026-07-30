@@ -1,7 +1,7 @@
 import base64
 import inspect
 import json
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 
@@ -284,6 +284,26 @@ def test_raw_transport_from_dict_rejects_noncanonical_or_invalid_base64():
             RawTransportResult.from_dict({**payload, "raw_response_bytes": envelope})
 
 
+def test_response_text_preserves_exact_empty_and_whitespace_capture():
+    for text in ("", " ", "\t\r\n", "  exact \n"):
+        captured = transport(response_text=text)
+        assert captured.response_text == text
+        assert RawTransportResult.from_dict(captured.to_dict()).response_text == text
+
+        sealed = execution(result=captured)
+        assert sealed.response_text == text
+        assert ProviderExecution.from_dict(sealed.to_dict()).response_text == text
+        assert ProviderExecution.from_dict(sealed.to_dict()).canonical_bytes() == (
+            sealed.canonical_bytes()
+        )
+
+
+def test_response_text_rejects_non_string_and_utf8_oversize():
+    for value in (None, b"", 1, object(), "é" * (5 * 1024 * 1024 + 1)):
+        with pytest.raises(ProviderValidationError):
+            transport(response_text=value)
+
+
 def test_adapter_executes_callback_once_binds_identity_tokens_bytes_and_timing():
     calls = []
     req = request()
@@ -335,6 +355,132 @@ def test_execution_raw_hash_depends_only_on_raw_bytes_and_roundtrips_exact_paylo
     raw["data"] = base64.b64encode(b"changed").decode("ascii")
     with pytest.raises(ProviderValidationError, match="raw_response_hash"):
         ProviderExecution.from_dict({**payload, "raw_response_bytes": raw})
+
+
+def test_execution_is_sealed_non_constructible_non_subclassable_and_not_replaceable():
+    sealed = execution()
+    with pytest.raises(TypeError):
+        ProviderExecution()
+    with pytest.raises(TypeError):
+        ProviderExecution(
+            configuration(),
+            request(),
+            "fake",
+            "fake-model",
+            "fake-revision",
+            "sha256:" + "0" * 64,
+            "sha256:" + "1" * 64,
+            "sha256:" + "2" * 64,
+            "answer",
+            b"raw",
+            "sha256:" + "3" * 64,
+            1,
+            1,
+            TOKEN_ACCOUNTING_VERSION,
+            None,
+            UTC_1,
+            UTC_2,
+            1.0,
+        )
+    with pytest.raises(TypeError):
+        replace(sealed, response_text="forged")
+
+    with pytest.raises(TypeError):
+
+        class PlainExecutionSubclass(ProviderExecution):
+            pass
+
+    with pytest.raises(TypeError):
+
+        @dataclass(frozen=True)
+        class DataclassExecutionSubclass(ProviderExecution):
+            extra: str = "forged"
+
+    with pytest.raises(TypeError):
+
+        class CustomExecutionSubclass(ProviderExecution):
+            def __init__(self):
+                pass
+
+
+def test_execution_embeds_complete_immutable_configuration_and_request():
+    config = configuration()
+    req = request()
+    sealed = execution(config, req)
+
+    assert sealed.configuration == config
+    assert sealed.request == req
+    assert sealed.configuration.to_dict() == config.to_dict()
+    assert sealed.request.to_dict() == req.to_dict()
+    assert sealed.provider == sealed.configuration.provider
+    assert sealed.config_hash == sealed.configuration.config_hash
+    assert sealed.request_hash == sealed.request.request_hash
+    assert sealed.prompt_template_hash == sealed.request.prompt_template_hash
+    with pytest.raises(FrozenInstanceError):
+        sealed.configuration.provider = "changed"
+    with pytest.raises(FrozenInstanceError):
+        sealed.request.prompt_text = "changed"
+
+
+def test_execution_from_dict_rederives_all_identity_and_requires_exact_canonical_shape():
+    sealed = execution()
+    payload = sealed.to_dict()
+
+    for key in tuple(payload):
+        broken = dict(payload)
+        broken.pop(key)
+        with pytest.raises(ProviderValidationError):
+            ProviderExecution.from_dict(broken)
+    with pytest.raises(ProviderValidationError, match="unexpected fields"):
+        ProviderExecution.from_dict({**payload, "extra": True})
+
+    projection_changes = {
+        "provider": "forged",
+        "model_id": "forged",
+        "provider_revision": "forged",
+        "config_hash": "sha256:" + "0" * 64,
+        "request_hash": "sha256:" + "0" * 64,
+        "prompt_template_hash": "sha256:" + "0" * 64,
+        "raw_response_hash": "sha256:" + "0" * 64,
+        "token_accounting_version": "forged",
+    }
+    for field, value in projection_changes.items():
+        with pytest.raises(ProviderValidationError):
+            ProviderExecution.from_dict({**payload, field: value})
+
+    other_config = configuration(provider="forged").to_dict()
+    other_request = request(prompt_text="forged").to_dict()
+    with pytest.raises(ProviderValidationError, match="canonical"):
+        ProviderExecution.from_dict({**payload, "configuration": other_config})
+    with pytest.raises(ProviderValidationError, match="canonical"):
+        ProviderExecution.from_dict({**payload, "request": other_request})
+
+    invalid_capture_changes = {
+        "input_tokens": True,
+        "output_tokens": -1,
+        "started_timestamp": "not-utc",
+        "completed_timestamp": "2026-07-29T12:00:00.1Z",
+        "latency_ms": -1,
+    }
+    for field, value in invalid_capture_changes.items():
+        with pytest.raises(ProviderValidationError):
+            ProviderExecution.from_dict({**payload, field: value})
+
+
+def test_old_execution_forgery_reproduction_is_rejected():
+    genuine = execution()
+    forged = genuine.to_dict()
+    forged_config = configuration(
+        provider="attacker", model_id="fake", provider_revision="fake"
+    )
+    forged.update(
+        provider=forged_config.provider,
+        model_id=forged_config.model_id,
+        provider_revision=forged_config.provider_revision,
+        config_hash=forged_config.config_hash,
+    )
+    with pytest.raises(ProviderValidationError):
+        ProviderExecution.from_dict(forged)
 
 
 def test_adapter_rejects_callback_type_identity_and_tampered_records():

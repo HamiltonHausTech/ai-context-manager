@@ -52,6 +52,7 @@ PRIMARY_COMPARABILITY_FIELDS = (
 _MAX_SHORT_STRING = 256
 _MAX_PROVENANCE = 1024
 _MAX_PROMPT_BYTES = 10 * 1024 * 1024
+_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 _MAX_RAW_BYTES = 50 * 1024 * 1024
 _MAX_CANONICAL_JSON_BYTES = 1024 * 1024
 _MAX_TREE_DEPTH = 32
@@ -285,6 +286,15 @@ def _prompt(value: Any) -> str:
     return cast(str, value)
 
 
+def _response_text(value: Any) -> str:
+    """Capture provider response text exactly, including empty or whitespace-only text."""
+    if type(value) is not str:
+        _fail("response_text must be a string")
+    if len(value.encode("utf-8")) > _MAX_RESPONSE_BYTES:
+        _fail("response_text must be at most 10MiB UTF-8")
+    return cast(str, value)
+
+
 def _utc(value: ClockValue, name: str = "timestamp") -> str:
     if isinstance(value, datetime):
         if value.tzinfo is None or value.utcoffset() != timezone.utc.utcoffset(value):
@@ -478,7 +488,7 @@ class RawTransportResult(_CanonicalRecord):
         object.__setattr__(
             self,
             "response_text",
-            _short_string("response_text", self.response_text, 10 * 1024 * 1024),
+            _response_text(self.response_text),
         )
         object.__setattr__(
             self, "raw_response_bytes", _raw_bytes(self.raw_response_bytes)
@@ -522,10 +532,19 @@ class RawTransportResult(_CanonicalRecord):
         )
 
 
-@dataclass(frozen=True)
-class ProviderExecution(_CanonicalRecord):
-    """Validated provider execution evidence with exact raw-byte integrity."""
+_EXECUTION_FACTORY_GUARD = object()
 
+
+@dataclass(frozen=True, init=False)
+class ProviderExecution(_CanonicalRecord):
+    """Sealed, internally derived provider execution evidence.
+
+    ``from_dict`` validates complete internal derivation and canonical encoding. It
+    cannot prove that a provider actually emitted the supplied transport artifact.
+    """
+
+    configuration: ProviderConfiguration
+    request: ProviderRequest
     provider: str
     model_id: str
     provider_revision: str
@@ -543,126 +562,107 @@ class ProviderExecution(_CanonicalRecord):
     completed_timestamp: str
     latency_ms: float
 
-    def __post_init__(self) -> None:
-        if type(self) is not ProviderExecution:
-            _fail("ProviderExecution subclasses are not accepted")
-        for name in ("provider", "model_id", "provider_revision"):
-            object.__setattr__(self, name, _short_string(name, getattr(self, name)))
-        object.__setattr__(self, "config_hash", _hash("config_hash", self.config_hash))
-        object.__setattr__(
-            self, "request_hash", _hash("request_hash", self.request_hash)
-        )
-        object.__setattr__(
-            self,
-            "prompt_template_hash",
-            _hash("prompt_template_hash", self.prompt_template_hash),
-        )
-        object.__setattr__(
-            self,
-            "response_text",
-            _short_string("response_text", self.response_text, 10 * 1024 * 1024),
-        )
-        object.__setattr__(
-            self, "raw_response_bytes", _raw_bytes(self.raw_response_bytes)
-        )
-        expected_hash = "sha256:" + hashlib.sha256(self.raw_response_bytes).hexdigest()
-        object.__setattr__(
-            self,
-            "raw_response_hash",
-            _hash("raw_response_hash", self.raw_response_hash),
-        )
-        if self.raw_response_hash != expected_hash:
-            _fail("raw_response_hash does not match raw_response_bytes")
-        object.__setattr__(
-            self, "input_tokens", _token("input_tokens", self.input_tokens)
-        )
-        object.__setattr__(
-            self, "output_tokens", _token("output_tokens", self.output_tokens)
-        )
-        if self.token_accounting_version != TOKEN_ACCOUNTING_VERSION:
-            _fail(f"token_accounting_version must be {TOKEN_ACCOUNTING_VERSION}")
-        object.__setattr__(
-            self,
-            "provider_request_id",
-            _optional_string("provider_request_id", self.provider_request_id, 1024),
-        )
-        object.__setattr__(
-            self, "started_timestamp", _utc(self.started_timestamp, "started_timestamp")
-        )
-        object.__setattr__(
-            self,
-            "completed_timestamp",
-            _utc(self.completed_timestamp, "completed_timestamp"),
-        )
-        object.__setattr__(self, "latency_ms", _number("latency_ms", self.latency_ms))
-        if self.latency_ms < 0:
-            _fail("latency_ms must be nonnegative")
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("ProviderExecution cannot be constructed directly")
 
-    @classmethod
-    def create(
-        cls,
-        config: ProviderConfiguration,
-        req: ProviderRequest,
-        result: RawTransportResult,
-        started_timestamp: str,
-        completed_timestamp: str,
-        latency_ms: float,
-    ) -> "ProviderExecution":
-        _require_exact(config, ProviderConfiguration, "configuration")
-        _require_exact(req, ProviderRequest, "request")
-        result = RawTransportResult.from_dict(result.to_dict())
-        if (
-            result.observed_provider,
-            result.observed_model_id,
-            result.observed_provider_revision,
-        ) != (config.provider, config.model_id, config.provider_revision):
-            raise ProviderIdentityMismatchError(
-                "transport provider/model/revision identity mismatch"
-            )
-        raw_hash = "sha256:" + hashlib.sha256(result.raw_response_bytes).hexdigest()
-        return cls(
-            config.provider,
-            config.model_id,
-            config.provider_revision,
-            config.config_hash,
-            req.request_hash,
-            req.prompt_template_hash,
-            result.response_text,
-            result.raw_response_bytes,
-            raw_hash,
-            result.input_tokens,
-            result.output_tokens,
-            TOKEN_ACCOUNTING_VERSION,
-            result.provider_request_id,
-            started_timestamp,
-            completed_timestamp,
-            latency_ms,
-        )
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        raise TypeError("ProviderExecution cannot be subclassed")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ProviderExecution":
+        """Reconstruct a canonically encoded, internally self-consistent artifact.
+
+        This validates all embedded records and re-derives every identity projection
+        and byte hash. It establishes artifact integrity, not provider authenticity.
+        """
+        if cls is not ProviderExecution:
+            _fail("ProviderExecution subclasses are not accepted")
         if type(data) is not dict:
             _fail("ProviderExecution payload must be an exact dict")
-        keys = tuple(field.name for field in fields(cls))
+        keys = tuple(item.name for item in fields(ProviderExecution))
         _exact_fields(data, keys)
-        return cls(
-            data["provider"],
-            data["model_id"],
-            data["provider_revision"],
-            data["config_hash"],
-            data["request_hash"],
-            data["prompt_template_hash"],
-            data["response_text"],
-            _bytes_from_envelope(data["raw_response_bytes"], "raw_response_bytes"),
-            data["raw_response_hash"],
-            data["input_tokens"],
-            data["output_tokens"],
-            data["token_accounting_version"],
-            data["provider_request_id"],
-            data["started_timestamp"],
-            data["completed_timestamp"],
-            data["latency_ms"],
+        config = ProviderConfiguration.from_dict(data["configuration"])
+        req = ProviderRequest.from_dict(data["request"])
+        record = _derive_provider_execution(
+            _EXECUTION_FACTORY_GUARD,
+            config,
+            req,
+            response_text=data["response_text"],
+            raw_response_bytes=_bytes_from_envelope(
+                data["raw_response_bytes"], "raw_response_bytes"
+            ),
+            input_tokens=data["input_tokens"],
+            output_tokens=data["output_tokens"],
+            provider_request_id=data["provider_request_id"],
+            started_timestamp=data["started_timestamp"],
+            completed_timestamp=data["completed_timestamp"],
+            latency_ms=data["latency_ms"],
         )
+        if data["raw_response_hash"] != record.raw_response_hash:
+            _fail("raw_response_hash does not match raw_response_bytes")
+        if record.canonical_bytes() != _canonical_bytes(data):
+            _fail("ProviderExecution payload is not exact canonical derived form")
+        return record
+
+
+def _derive_provider_execution(
+    guard: object,
+    config: ProviderConfiguration,
+    req: ProviderRequest,
+    *,
+    response_text: Any,
+    raw_response_bytes: Any,
+    input_tokens: Any,
+    output_tokens: Any,
+    provider_request_id: Any,
+    started_timestamp: ClockValue,
+    completed_timestamp: ClockValue,
+    latency_ms: Any,
+) -> ProviderExecution:
+    """The sole guarded construction path used by adapters and artifact loading."""
+    if guard is not _EXECUTION_FACTORY_GUARD:
+        raise TypeError("ProviderExecution factory is internal")
+    _require_exact(config, ProviderConfiguration, "configuration")
+    _require_exact(req, ProviderRequest, "request")
+    canonical_config = ProviderConfiguration.from_dict(config.to_dict())
+    canonical_request = ProviderRequest.from_dict(req.to_dict())
+    captured_text = _response_text(response_text)
+    captured_raw = _raw_bytes(raw_response_bytes)
+    captured_input_tokens = _token("input_tokens", input_tokens)
+    captured_output_tokens = _token("output_tokens", output_tokens)
+    captured_request_id = _optional_string(
+        "provider_request_id", provider_request_id, 1024
+    )
+    captured_started = _utc(started_timestamp, "started_timestamp")
+    captured_completed = _utc(completed_timestamp, "completed_timestamp")
+    captured_latency = _number("latency_ms", latency_ms)
+    if captured_latency < 0:
+        _fail("latency_ms must be nonnegative")
+
+    record = object.__new__(ProviderExecution)
+    values = {
+        "configuration": canonical_config,
+        "request": canonical_request,
+        "provider": canonical_config.provider,
+        "model_id": canonical_config.model_id,
+        "provider_revision": canonical_config.provider_revision,
+        "config_hash": canonical_config.config_hash,
+        "request_hash": canonical_request.request_hash,
+        "prompt_template_hash": canonical_request.prompt_template_hash,
+        "response_text": captured_text,
+        "raw_response_bytes": captured_raw,
+        "raw_response_hash": "sha256:" + hashlib.sha256(captured_raw).hexdigest(),
+        "input_tokens": captured_input_tokens,
+        "output_tokens": captured_output_tokens,
+        "token_accounting_version": canonical_config.token_accounting_version,
+        "provider_request_id": captured_request_id,
+        "started_timestamp": captured_started,
+        "completed_timestamp": captured_completed,
+        "latency_ms": captured_latency,
+    }
+    for name, value in values.items():
+        object.__setattr__(record, name, value)
+    return record
 
 
 class Provider(Protocol):
@@ -726,13 +726,31 @@ class RecordedCallbackProvider:
             raise ProviderValidationError(
                 "callback must return exact RawTransportResult"
             )
-        return ProviderExecution.create(
+        result = RawTransportResult.from_dict(result.to_dict())
+        if (
+            result.observed_provider,
+            result.observed_model_id,
+            result.observed_provider_revision,
+        ) != (
+            self.configuration.provider,
+            self.configuration.model_id,
+            self.configuration.provider_revision,
+        ):
+            raise ProviderIdentityMismatchError(
+                "transport provider/model/revision identity mismatch"
+            )
+        return _derive_provider_execution(
+            _EXECUTION_FACTORY_GUARD,
             self.configuration,
             request,
-            result,
-            started_timestamp,
-            completed_timestamp,
-            (monotonic_end - monotonic_start) * 1000.0,
+            response_text=result.response_text,
+            raw_response_bytes=result.raw_response_bytes,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            provider_request_id=result.provider_request_id,
+            started_timestamp=started_timestamp,
+            completed_timestamp=completed_timestamp,
+            latency_ms=(monotonic_end - monotonic_start) * 1000.0,
         )
 
 
@@ -1034,6 +1052,8 @@ def validate_execution(
     _require_exact(execution, ProviderExecution, "execution")
     config = _config_from_provider(provider)
     expected = {
+        "configuration": config,
+        "request": request,
         "provider": config.provider,
         "model_id": config.model_id,
         "provider_revision": config.provider_revision,
