@@ -39,6 +39,7 @@ _MAX_RUBRIC_TEXT = 1 * 1_024 * 1_024
 _MAX_ARTIFACT_DEPTH = 32
 _MAX_ARTIFACT_NODES = 100_000
 _MAX_ARTIFACT_TEXT = 4 * 1_024 * 1_024
+_MAX_ARTIFACT_NUMBER = 1_000_000_000_000
 
 
 def _nonempty(name: str, value: Any) -> None:
@@ -155,11 +156,14 @@ def _tree_preflight(value: Any, *, json_only: bool) -> None:
 
         if type(item) is str:
             text_characters += len(item)
-        elif item is None or type(item) in (bool, int):
+        elif item is None or type(item) is bool:
             pass
+        elif type(item) is int:
+            if abs(item) > _MAX_ARTIFACT_NUMBER:
+                raise ValueError("artifact integer exceeds the numeric budget")
         elif type(item) is float:
-            if not math.isfinite(item):
-                raise ValueError("artifact numbers must be finite")
+            if not math.isfinite(item) or abs(item) > _MAX_ARTIFACT_NUMBER:
+                raise ValueError("artifact float exceeds the numeric budget")
         elif type(item) is dict:
             if len(item) > _MAX_ARTIFACT_NODES - nodes - len(stack):
                 raise ValueError("artifact exceeds the node budget")
@@ -808,7 +812,7 @@ class ScoringResult(CanonicalRecord):
             if _serialize(data) != derived.to_dict():
                 raise ValueError
             return derived
-        except (KeyError, RecursionError, TypeError, ValueError):
+        except (KeyError, OverflowError, RecursionError, TypeError, ValueError):
             raise ValueError("payload is not an exact canonical derived scoring result")
 
 

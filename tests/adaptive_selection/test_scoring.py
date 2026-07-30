@@ -909,3 +909,11 @@ def test_scoring_result_json_preflight_requires_exact_containers_and_node_budget
     payload["criterion_scores"] = [None] * 100001
     with pytest.raises(ValueError, match="canonical derived scoring result"):
         ScoringResult.from_dict(payload)
+
+
+@pytest.mark.parametrize("value", [10**400, -(10**400), 1e300, -1e300])
+def test_scoring_result_json_preflight_canonically_rejects_oversized_numbers(value):
+    payload = score_assessment(rubric(), spec(), assessment()).to_dict()
+    payload["rubric"]["criteria"][0]["weight"] = value
+    with pytest.raises(ValueError, match="canonical derived scoring result"):
+        ScoringResult.from_dict(payload)
