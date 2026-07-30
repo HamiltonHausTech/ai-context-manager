@@ -36,3 +36,24 @@ The amendment reduces nominal precision, narrows the confirmatory claim, and may
 ### Outcome access declaration
 
 At the time of this amendment, no corpus had been authored or sealed, no model condition had run, and no adaptation or held-out outcome existed or had been accessed. The corrections therefore do not respond to observed effects and cannot favor a known result.
+
+## 2026-07-30 — Separate Terra development-probe protocol
+
+- **Accountable author:** Andrew (Drew) Hamilton, project owner
+- **Drafting and implementation support:** Hermes Agent
+- **Status:** prospective development-only protocol
+- **Timing:** committed before any Terra request, bridge-corpus authoring or sealing, model condition, adaptation output, held-out output, or comparative outcome existed
+- **Related protocol:** [Terra Bridge Development Protocol](terra-bridge-development-protocol.md)
+- **Effect on protocol 1.1-draft:** none. The parent charter remains draft and confirmatory execution remains prohibited.
+
+### Scope and rationale
+
+Andrew prospectively selected OpenAI `gpt-5.6-terra` as the intended bridge model based on the planning assumption that its published price and model-tier positioning offer an acceptable screening tradeoff. This is an owner decision, not an experimental finding about comparative capability, null interpretability, or economics. Before corpus work, the project requires one benign API/configuration probe to determine whether the selected endpoint can be represented honestly by the existing provider-evidence boundary.
+
+The separate development protocol authorizes exactly one attempted non-domain Responses API network request under a prospectively committed JSON contract. The first attempted request consumes the sole authority regardless of outcome; SDK retries, fallback, replacement requests, and pre-authorized amended attempts are prohibited. The contract freezes one literal API request body, client retry/timeout settings, the requested model alias, medium reasoning, omitted temperature/top-p/seed, strict structured output, disabled tools and state, `store=false`, output cap, standard service tier, pricing, projected-cost guard, decoded HTTP-body capture, raw usage validation, both request and response IDs, sanitized failure evidence, and JSON `null` for the absence of a separately reported provider revision. Nullable revision and temperature schema migrations are required before the live request.
+
+The probe cannot establish model quality, context sensitivity, adaptive efficacy, transfer, safety, production value, or favorable economics. Passing permits only drafting—not executing—a separate development-only context-sensitivity calibration proposal. Any calibration call, second Terra probe, or proposed 99-call bridge requires a wholly new, explicitly owner-approved contract; all remain prohibited here.
+
+### Outcome access declaration
+
+At this amendment's freeze, no Terra API request had been made for this project, no hosted-model result existed, and no bridge corpus had been authored or sealed. The probe prompt contains no DevOps task, selector condition, feedback, labels, required-context set, answer key, or held-out material.

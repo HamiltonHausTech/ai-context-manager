@@ -1,0 +1,232 @@
+{
+  "budget": {
+    "currency": "USD",
+    "input_per_million": "2.00",
+    "maximum_projected_cost": "0.25",
+    "maximum_projected_input_tokens": 4096,
+    "output_per_million": "12.00",
+    "pricing_source": "https://developers.openai.com/api/docs/pricing",
+    "pricing_verified_date": "2026-07-30",
+    "projected_input_method": "utf8_byte_length_of_canonical_request_body_plus_1024_provider_overhead_tokens; reject above 4096",
+    "projected_worst_case_cost": "0.014336",
+    "projected_worst_case_output_tokens": 512,
+    "warning": "This is a conservative pre-dispatch projection guard, not a guaranteed billing cap."
+  },
+  "claim_scope": "A passing result establishes only that one development request to the selected Terra endpoint can be represented by the existing provider evidence boundary with the frozen settings. It does not establish hosted determinism, context sensitivity, adaptive efficacy, transfer, safety, production value, or favorable economics.",
+  "client_configuration": {
+    "max_retries": 0,
+    "sdk": "openai-python",
+    "sdk_version": "2.46.0",
+    "timeout_seconds": 30.0
+  },
+  "contract_version": "terra-config-probe-v1",
+  "decision": {
+    "pass": "Record the result and permit drafting, but not executing, a separate development-only context-sensitivity calibration proposal.",
+    "stop_or_block": "Any attempted network request that does not pass consumes the sole authorization. Record failure evidence and stop. This contract does not authorize a replacement request."
+  },
+  "execution_authority": {
+    "allowed": "One benign development-only Responses API network-request attempt after the contract and implementation prerequisites pass.",
+    "first_attempt_consumes_authority_regardless_of_result": true,
+    "forbidden": [
+      "replacement probe under this contract or its lineage",
+      "context-sensitivity calibration call",
+      "DevOps task execution",
+      "selector comparison",
+      "adaptation feedback",
+      "held-out authoring or access",
+      "99-call bridge trial",
+      "automatic retry",
+      "silent parameter fallback"
+    ],
+    "future_request_requires_new_owner_approved_protocol": true,
+    "maximum_live_request_attempts_across_contract_lineage": 1
+  },
+  "failure_artifact": {
+    "allowed_categories": [
+      "preflight_rejected_no_network_attempt",
+      "transport_failure_server_acceptance_unknown",
+      "http_error",
+      "parse_error",
+      "provider_identity_mismatch",
+      "invalid_response_status",
+      "refusal",
+      "incomplete_response",
+      "invalid_structured_output",
+      "missing_or_invalid_usage",
+      "missing_provider_request_id",
+      "missing_response_id",
+      "artifact_write_failure"
+    ],
+    "forbidden_fields": [
+      "api_key",
+      "authorization_header",
+      "complete_headers",
+      "environment_dump",
+      "client_representation",
+      "exception_message",
+      "traceback",
+      "request_body",
+      "response_body"
+    ],
+    "required_fields": [
+      "artifact_version",
+      "contract_hash",
+      "configuration_hash",
+      "code_revision",
+      "request_attempted",
+      "server_acceptance",
+      "started_timestamp",
+      "completed_timestamp",
+      "latency_ms",
+      "failure_category",
+      "http_status_code",
+      "provider_request_id"
+    ],
+    "server_acceptance_values": [
+      "no",
+      "yes",
+      "unknown"
+    ],
+    "write_atomically_before_nonzero_exit_when_technically_possible": true
+  },
+  "identity": {
+    "distinct_revision_field_expected": false,
+    "observed_model_source": "response.model",
+    "provider": "openai",
+    "provider_revision": null,
+    "requested_model": "gpt-5.6-terra",
+    "revision_claim": "JSON null records absence. No alias, placeholder, SDK version, date, or response ID is a snapshot, revision, or determinism guarantee."
+  },
+  "omitted_generation_controls": {
+    "seed": {
+      "supported_by_protocol": false
+    },
+    "temperature": {
+      "supported_by_protocol": false
+    },
+    "top_p": {
+      "supported_by_protocol": false
+    }
+  },
+  "preflight": {
+    "contract_commit_must_precede_implementation_commit": true,
+    "ignored_paths_excluded_from_cleanliness_gate": [
+      ".env",
+      ".local/adaptive-selection-probes/"
+    ],
+    "protected_paths": [
+      ".hermes/plans/2026-07-30-terra-bridge-preparation.md",
+      "docs/research/adaptive-context-protocol-amendments.md",
+      "docs/research/terra-bridge-development-protocol.md",
+      "experiments/adaptive_selection/controls/terra_probe_v1.json",
+      "experiments/adaptive_selection/providers.py",
+      "experiments/adaptive_selection/schema.py",
+      "experiments/adaptive_selection/openai_manifest_probe.py",
+      "tests/adaptive_selection/test_openai_manifest_probe.py",
+      "tests/adaptive_selection/test_runner.py",
+      "tests/adaptive_selection/test_schema.py",
+      "tests/adaptive_selection/test_packaging.py"
+    ],
+    "requirements": [
+      "every protected path is tracked in HEAD",
+      "protected worktree bytes equal the index and HEAD",
+      "no staged, unstaged, or untracked changes exist under protected paths",
+      "the manifest SHA-256 equals the hash pinned in the tracked protocol",
+      "HEAD and every protected implementation-file SHA-256 are recorded",
+      "the contract commit is an ancestor of the implementation commit",
+      "dry-run and fake-transport tests pass",
+      "the paid-execution flag is explicit",
+      "the ignored output directory is empty"
+    ]
+  },
+  "request_body": {
+    "input": "Execute the development-only Terra API manifest probe. Do not use external tools or infer any domain facts.",
+    "instructions": "Return a strict schema-compliant response for this API capability probe. Set probe_marker to terra-manifest-probe-v1, status to ok, and notes to a concise statement that no tools were used.",
+    "max_output_tokens": 512,
+    "metadata": {
+      "experiment": "adaptive-context-development",
+      "probe_contract": "terra-config-probe-v1"
+    },
+    "model": "gpt-5.6-terra",
+    "parallel_tool_calls": false,
+    "reasoning": {
+      "effort": "medium"
+    },
+    "service_tier": "default",
+    "store": false,
+    "stream": false,
+    "text": {
+      "format": {
+        "name": "terra_manifest_probe_v1",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "notes": {
+              "type": "string"
+            },
+            "probe_marker": {
+              "enum": [
+                "terra-manifest-probe-v1"
+              ],
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "ok"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "probe_marker",
+            "status",
+            "notes"
+          ],
+          "type": "object"
+        },
+        "strict": true,
+        "type": "json_schema"
+      }
+    },
+    "tools": [],
+    "truncation": "disabled"
+  },
+  "response_acceptance": {
+    "provider_request_id_source": "LegacyAPIResponse.request_id",
+    "provider_request_id_required": true,
+    "raw_body_source": "LegacyAPIResponse.content",
+    "raw_body_semantics": "Exact decoded HTTP entity-body bytes exposed by the SDK; not SDK reserialization and not guaranteed TCP/wire bytes.",
+    "refusals_allowed": false,
+    "response_id_source": "Response.id",
+    "response_id_required": true,
+    "response_status": "completed",
+    "structured_output_must_match_frozen_schema": true,
+    "usage_cross_check_sdk_projection": true,
+    "usage_raw_json_requires_exact_nonnegative_integers": [
+      "usage.input_tokens",
+      "usage.output_tokens",
+      "usage.total_tokens",
+      "usage.input_tokens_details.cached_tokens_when_present",
+      "usage.output_tokens_details.reasoning_tokens_when_present"
+    ]
+  },
+  "retention_and_secrets": {
+    "api_key_source": "ignored_mode_0600_worktree_dotenv_only",
+    "data_controls_source": "https://developers.openai.com/api/docs/guides/your-data",
+    "data_controls_verified_date": "2026-07-30",
+    "default_abuse_monitoring_note": "OpenAI documents default abuse-monitoring retention of up to 30 days, subject to stated exceptions. store=false does not establish zero provider retention.",
+    "request_store": false,
+    "serialize_or_print_credentials_headers_exception_messages_or_tracebacks": false
+  },
+  "status": "prospective_freeze_effective_at_contract_commit",
+  "token_accounting": {
+    "details_to_capture_when_available": [
+      "input_tokens_details.cached_tokens",
+      "output_tokens_details.reasoning_tokens"
+    ],
+    "require_provider_reported_input_tokens": true,
+    "require_provider_reported_output_tokens": true,
+    "require_provider_reported_total_tokens": true,
+    "runner_accounting_version": "provider-reported-usage-v1"
+  }
+}
