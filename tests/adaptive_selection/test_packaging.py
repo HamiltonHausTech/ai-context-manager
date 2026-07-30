@@ -32,6 +32,18 @@ EXPECTED_PUBLIC_NAMES = {
     "ReferenceIntegrityError",
     "RecordNotFoundError",
     "IntegrityError",
+    "RequiredStepSpec",
+    "NegativeFindingSpec",
+    "EvidenceSpan",
+    "TaskScoringSpec",
+    "StepAssessment",
+    "FindingAssessment",
+    "CorrectionAssessment",
+    "BlindedAssessment",
+    "RuleEffect",
+    "CriterionArithmetic",
+    "ScoringResult",
+    "score_assessment",
     "AdaptivePolicySelector",
     "FullContextSelector",
     "SelectionResult",
@@ -128,3 +140,56 @@ def test_public_package_exports_load_and_persist_tiny_fixture(tmp_path):
             "run_manifest": 4,
         }
         assert repository.list_feedback() == feedback_events
+
+
+def test_public_package_scores_blinded_assessment_without_selector_inputs():
+    rubric = adaptive_selection.ScoringRubric(
+        rubric_id="public-rubric",
+        instructions="Use frozen evidence only.",
+        criteria=(
+            adaptive_selection.RubricCriterion("correct", "Correct result", 1.0),
+        ),
+        provenance="test:public-scoring",
+    )
+    scoring_spec = adaptive_selection.TaskScoringSpec(
+        spec_id="public-spec",
+        spec_version="1",
+        rubric_id="public-rubric",
+        expected_criterion_ids=("correct",),
+        required_steps=(
+            adaptive_selection.RequiredStepSpec("answer", "correct", "1", False, None),
+        ),
+        negative_findings=(),
+        scorer_use="fixture_only",
+        engine_version="deterministic-v1",
+        normalization_version="weighted-v1",
+        rule_version="declared-v1",
+        decimal_precision=28,
+        decimal_version="decimal-v1",
+        provenance="test:public-scoring",
+    )
+    blinded = adaptive_selection.BlindedAssessment(
+        output_id="opaque-1",
+        rubric_id="public-rubric",
+        spec_id="public-spec",
+        spec_version="1",
+        step_assessments=(
+            adaptive_selection.StepAssessment(
+                "answer",
+                "met",
+                (adaptive_selection.EvidenceSpan(0, 15, "frozen evidence"),),
+            ),
+        ),
+        finding_assessments=(),
+        corrections=(),
+        rater_id="fixture-rater",
+        rater_version="1",
+        assessment_timestamp="2026-07-29T12:00:00Z",
+        provenance="test:public-scoring",
+    )
+
+    result = adaptive_selection.score_assessment(rubric, scoring_spec, blinded)
+
+    assert isinstance(result, adaptive_selection.ScoringResult)
+    assert result.status == "scored"
+    assert result.normalized_score == 1.0
