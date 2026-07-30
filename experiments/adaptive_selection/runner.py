@@ -1063,6 +1063,7 @@ class PhaseTraceEvent(CanonicalRunnerRecord):
     repetition_index: Optional[int]
     feedback_prefix_event_ids: Tuple[str, ...]
     learning_state_hash: Optional[str]
+    timestamp: str
 
     def __post_init__(self) -> None:
         _index("sequence", self.sequence)
@@ -1083,12 +1084,28 @@ class PhaseTraceEvent(CanonicalRunnerRecord):
         )
         if self.learning_state_hash is not None:
             _sha("learning_state_hash", self.learning_state_hash)
+        _utc_timestamp("timestamp", self.timestamp)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "PhaseTraceEvent":
         values = _exact(data, tuple(item.name for item in fields(cls)))
         values["feedback_prefix_event_ids"] = tuple(values["feedback_prefix_event_ids"])
         return cls(**values)
+
+
+@dataclass
+class _TraceBuffer:
+    events: list
+    clock: Callable[[], str]
+
+    def append(self, event: PhaseTraceEvent) -> None:
+        self.events.append(event)
+
+    def __len__(self) -> int:
+        return len(self.events)
+
+    def __iter__(self):
+        return iter(self.events)
 
 
 @dataclass(frozen=True)
@@ -1484,9 +1501,17 @@ def _replay_learning_state(
 
 
 def _expected_trace(
-    tasks: Tuple[OrderedTaskRecord, ...],
+    tasks: Tuple[OrderedTaskRecord, ...], timestamps: Tuple[str, ...]
 ) -> Tuple[PhaseTraceEvent, ...]:
-    trace = []
+    timestamp_iter = iter(timestamps)
+
+    def expected_clock() -> str:
+        try:
+            return next(timestamp_iter)
+        except StopIteration:
+            _fail("phase trace contains too few timestamps")
+
+    trace = _TraceBuffer([], expected_clock)
     _trace(trace, "ADAPTATION", "adaptation_started")
     adaptation = tuple(item for item in tasks if item.phase == "adaptation")
     evaluation = tuple(item for item in tasks if item.phase == "evaluation")
@@ -1552,7 +1577,12 @@ def _expected_trace(
             )
     _trace(trace, "EVALUATION", "evaluation_completed")
     _trace(trace, "COMPLETE", "experiment_completed")
-    return tuple(trace)
+    result = tuple(trace)
+    try:
+        next(timestamp_iter)
+    except StopIteration:
+        return result
+    _fail("phase trace contains excess timestamps")
 
 
 def _validate_artifact_semantics(
@@ -1603,7 +1633,8 @@ def _validate_artifact_semantics(
         _fail("run family phase order does not match plan")
 
     locked_feedback_by_case: Dict[str, Dict[str, Any]] = {}
-    fairness: Dict[Tuple[str, int], Tuple[Any, ...]] = {}
+    visible_fairness: Dict[str, Tuple[Any, ...]] = {}
+    runtime_fairness: Dict[Tuple[str, int], Tuple[Any, ...]] = {}
     for run in runs:
         arm = arm_by_id[run.arm_id]
         rep = rep_by_index[run.repetition_index]
@@ -1664,7 +1695,6 @@ def _validate_artifact_semantics(
             expected_policy_hash = _domain_hash(
                 "policy-decision-v1",
                 {
-                    "candidate_set_hash": task.candidate_set_hash,
                     "feedback_prefix_event_ids": task.feedback_prefix_before,
                     "learning_state_hash": task.learning_state_before.state_hash,
                     "selection_result": task.selection_result,
@@ -1708,17 +1738,29 @@ def _validate_artifact_semantics(
                 plan.learning_policy,
                 task.learning_state_after,
             )
-            key = (task.task_case_id, task.repetition_index)
-            fair_value = (
+            visible_value = (
                 task.selector_input_hash,
                 task.candidate_set_hash,
                 task.selection_result.token_budget,
                 task.scoring_result.spec_hash,
+            )
+            if (
+                task.task_case_id in visible_fairness
+                and visible_fairness[task.task_case_id] != visible_value
+            ):
+                _fail("same-case visible inputs differ across arms or repetitions")
+            visible_fairness[task.task_case_id] = visible_value
+            runtime_key = (task.task_case_id, task.repetition_index)
+            runtime_value = (
+                visible_value,
                 task.provider_execution.configuration.to_dict(),
             )
-            if key in fairness and fairness[key] != fair_value:
+            if (
+                runtime_key in runtime_fairness
+                and runtime_fairness[runtime_key] != runtime_value
+            ):
                 _fail("same-case/repetition fairness invariant failed across arms")
-            fairness[key] = fair_value
+            runtime_fairness[runtime_key] = runtime_value
 
     for rep in plan.repetitions:
         same_rep = [
@@ -1730,7 +1772,12 @@ def _validate_artifact_semantics(
             comparison = compare_manifests(same_rep[0], other)
             if not comparison.valid_for_primary_comparison:
                 _fail("within-repetition manifests are not primary-compatible")
-    if _expected_trace(all_tasks) != trace:
+    if any(
+        _timestamp_value(later.timestamp) < _timestamp_value(earlier.timestamp)
+        for earlier, later in zip(trace, trace[1:])
+    ):
+        _fail("phase trace timestamps must be nondecreasing")
+    if _expected_trace(all_tasks, tuple(item.timestamp for item in trace)) != trace:
         _fail(
             "phase trace is missing, reordered, or inconsistent with task transitions"
         )
@@ -1848,10 +1895,20 @@ class _RunWork:
     evidence: Dict[str, LearningStateEvidence]
     events: Dict[str, list]
     appended_outcome_ids: set
+    selector_instances: list
+
+
+def _call_seam(category: str, stage: str, callback: Callable[[], Any]) -> Any:
+    try:
+        return callback()
+    except RunnerError:
+        raise
+    except Exception as exc:
+        raise RunnerError(category, stage) from exc
 
 
 def _trace(
-    trace: list,
+    trace: _TraceBuffer,
     state: str,
     action: str,
     family: Optional[str] = None,
@@ -1863,7 +1920,16 @@ def _trace(
 ) -> None:
     trace.append(
         PhaseTraceEvent(
-            len(trace), state, action, family, case, arm, repetition, prefix, state_hash
+            len(trace),
+            state,
+            action,
+            family,
+            case,
+            arm,
+            repetition,
+            prefix,
+            state_hash,
+            trace.clock(),
         )
     )
     if len(trace) > _MAX_TRACE:
@@ -2014,7 +2080,7 @@ def _execute_slot(
     renderer: PromptRenderer,
     assessor: OutcomeAssessor,
     clocks: RunnerClocks,
-    trace: list,
+    trace: _TraceBuffer,
 ) -> Tuple[OrderedTaskRecord, Optional[FeedbackEvent]]:
     case = TaskCase.from_dict(material.task_case.to_dict())
     spec = TaskScoringSpec.from_dict(material.scoring_spec.to_dict())
@@ -2026,9 +2092,16 @@ def _execute_slot(
         if work.runtime.spec.uses_feature_learning
         else {}
     )
-    selector = work.runtime.selector_factory(MappingProxyType(utilities))
+    selector = _call_seam(
+        "selector_factory_failure",
+        phase,
+        lambda: work.runtime.selector_factory(MappingProxyType(utilities)),
+    )
     if selector is None or not callable(getattr(selector, "select", None)):
         _fail("selector factory must return a fresh selector with select(inputs)")
+    if any(selector is prior for prior in work.selector_instances):
+        _fail("selector factory must return a fresh selector for every slot")
+    work.selector_instances.append(selector)
     inputs = TaskInputs.from_dict(case.inputs.to_dict())
     selector_input_hash, candidate_set_hash = _visible_hashes(inputs)
     _trace(
@@ -2043,7 +2116,9 @@ def _execute_slot(
         state_before.state_hash,
     )
     started = _finite("selection monotonic start", clocks.monotonic_clock())
-    selected_raw = selector.select(inputs)
+    selected_raw = _call_seam(
+        "selector_failure", phase, lambda: selector.select(inputs)
+    )
     completed = _finite("selection monotonic completion", clocks.monotonic_clock())
     if completed < started:
         _fail("selection monotonic clock moved backward")
@@ -2052,7 +2127,6 @@ def _execute_slot(
     policy_hash = _domain_hash(
         "policy-decision-v1",
         {
-            "candidate_set_hash": candidate_set_hash,
             "feedback_prefix_event_ids": prefix_before,
             "learning_state_hash": state_before.state_hash,
             "selection_result": selected,
@@ -2105,7 +2179,11 @@ def _execute_slot(
         prefix_before,
         state_before.state_hash,
     )
-    request = renderer.render(inputs, selected.selected_items)
+    request = _call_seam(
+        "renderer_failure",
+        phase,
+        lambda: renderer.render(inputs, selected.selected_items),
+    )
     if (
         type(request) is not ProviderRequest
         or request.prompt_template_hash != plan.prompt_template_hash
@@ -2123,7 +2201,9 @@ def _execute_slot(
         prefix_before,
         state_before.state_hash,
     )
-    execution = work.provider.execute(request)
+    execution = _call_seam(
+        "provider_failure", phase, lambda: work.provider.execute(request)
+    )
     validate_execution(work.manifest, work.provider, request, execution)
     _trace(
         trace,
@@ -2154,7 +2234,9 @@ def _execute_slot(
     )
     if any(arm.arm_id.casefold() in output_id.casefold() for arm in plan.arms):
         _fail("blinding output ID contains an arm ID")
-    assessment = assessor.assess(blind_request)
+    assessment = _call_seam(
+        "assessment_failure", phase, lambda: assessor.assess(blind_request)
+    )
     if type(assessment) is not BlindedAssessment:
         _fail("assessor must return exact BlindedAssessment")
     assessment = BlindedAssessment.from_dict(assessment.to_dict())
@@ -2165,7 +2247,13 @@ def _execute_slot(
         or assessment.spec_version != spec.spec_version
     ):
         _fail("assessment identity mismatch")
-    scoring = score_assessment(case.sealed_evaluation.scoring_rubric, spec, assessment)
+    scoring = _call_seam(
+        "scoring_failure",
+        phase,
+        lambda: score_assessment(
+            case.sealed_evaluation.scoring_rubric, spec, assessment
+        ),
+    )
     _trace(
         trace,
         phase.upper(),
@@ -2211,7 +2299,11 @@ def _execute_slot(
             case.task_case_id,
             ordinal,
         )
-        feedback = dataset.reveal_feedback(receipt)
+        feedback = _call_seam(
+            "feedback_reveal_failure",
+            phase,
+            lambda: dataset.reveal_feedback(receipt),
+        )
         if type(feedback) is not FeedbackEvent:
             _fail("dataset must reveal exact FeedbackEvent")
         feedback = FeedbackEvent.from_dict(feedback.to_dict())
@@ -2238,11 +2330,15 @@ def _execute_slot(
             state_before.state_hash,
         )
         work.events[family].append(feedback)
-        snapshot = learn_utilities(
-            tuple(work.events[family]),
-            work.inputs[family],
-            plan.learning_policy,
-            clocks.learning_clock,
+        snapshot = _call_seam(
+            "learning_failure",
+            phase,
+            lambda: learn_utilities(
+                tuple(work.events[family]),
+                work.inputs[family],
+                plan.learning_policy,
+                clocks.learning_clock,
+            ),
         )
         work.snapshots[family] = snapshot
         state_after = LearningStateEvidence.from_snapshot(
@@ -2352,7 +2448,7 @@ def run_ordered_experiment(
             _fail("trace count exceeds preflight bound")
 
         stage = "runtime_initialization"
-        trace: list = []
+        trace = _TraceBuffer([], clocks.utc_clock)
         _trace(trace, "ADAPTATION", "adaptation_started")
         work_by_pair: Dict[Tuple[str, int], _RunWork] = {}
         empty_snapshots: Dict[str, LearningSnapshot] = {}
@@ -2428,6 +2524,7 @@ def run_ordered_experiment(
                     evidence,
                     {family: [] for family in plan.family_order},
                     set(),
+                    [],
                 )
                 work_by_pair[(runtime.spec.arm_id, repetition.repetition_index)] = work
                 manifests_by_rep.setdefault(repetition.repetition_index, []).append(
