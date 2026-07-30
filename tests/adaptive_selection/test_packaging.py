@@ -1,8 +1,9 @@
 from pathlib import Path
 
-import experiments.adaptive_selection as adaptive_selection
 import toml
 from setuptools import find_packages
+
+import experiments.adaptive_selection as adaptive_selection
 
 EXPECTED_PUBLIC_NAMES = {
     "DATASET_BUNDLE_VERSION",
