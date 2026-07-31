@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import inspect
 import json
 from dataclasses import FrozenInstanceError, dataclass, fields, replace
@@ -830,6 +831,7 @@ def configuration(**changes):
         model_id="model-1",
         provider_revision="revision-7",
         temperature=0.25,
+        temperature_supported=True,
         seed=17,
         seed_supported=True,
         tool_availability=("search", "calculator"),
@@ -933,14 +935,17 @@ def test_configuration_hash_is_order_independent_and_sensitive_to_every_input():
     for field, value in (
         ("provider", "other"),
         ("model_id", "other"),
-        ("provider_revision", "other"),
+        ("provider_revision", None),
         ("temperature", 0.5),
+        ("temperature_supported", False),
         ("seed", 18),
         ("seed_supported", False),
         ("tool_availability", ("other",)),
         ("generation_options", {"different": True}),
     ):
         changes = {field: value}
+        if field == "temperature_supported":
+            changes["temperature"] = None
         if field == "seed_supported":
             changes["seed"] = None
         assert configuration(**changes).config_hash != configuration().config_hash
@@ -970,6 +975,9 @@ def test_configuration_strict_bounds_and_seed_tool_invariants():
         {"temperature": True},
         {"temperature": float("nan")},
         {"temperature": 2.01},
+        {"temperature": None},
+        {"temperature_supported": False, "temperature": 0.25},
+        {"temperature_supported": "yes"},
         {"seed": 2**63},
         {"seed": None},
         {"seed_supported": False, "seed": 1},
@@ -982,6 +990,62 @@ def test_configuration_strict_bounds_and_seed_tool_invariants():
     for changes in bad_changes:
         with pytest.raises(ProviderValidationError):
             configuration(**changes)
+
+
+def test_nullable_revision_and_unsupported_temperature_roundtrip_and_hash_evidence():
+    config = configuration(
+        provider_revision=None,
+        temperature=None,
+        temperature_supported=False,
+        seed=None,
+        seed_supported=False,
+    )
+    payload = config.to_dict()
+
+    assert payload["provider_revision"] is None
+    assert payload["temperature"] is None
+    assert payload["temperature_supported"] is False
+    assert ProviderConfiguration.from_dict(payload) == config
+    hash_payload = {
+        key: value for key, value in payload.items() if key != "config_hash"
+    }
+    expected_hash = (
+        "sha256:"
+        + hashlib.sha256(
+            b"adaptive-provider-configuration-v2\0"
+            + json.dumps(
+                hash_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    assert config.config_hash == expected_hash
+    assert config.config_hash != configuration().config_hash
+    assert config.config_hash != configuration(provider_revision=None).config_hash
+
+    absent = transport(observed_provider_revision=None)
+    assert absent.to_dict()["observed_provider_revision"] is None
+    assert RawTransportResult.from_dict(absent.to_dict()) == absent
+
+    sealed = execution(config=config, result=absent)
+    assert sealed.provider_revision is None
+    assert sealed.to_dict()["provider_revision"] is None
+    assert ProviderExecution.from_dict(sealed.to_dict()) == sealed
+
+    utc_clock, monotonic_clock = clocks()
+    provider = RecordedCallbackProvider(
+        config,
+        lambda actual_config, actual: transport(
+            observed_provider_revision="fabricated"
+        ),
+        utc_clock,
+        monotonic_clock,
+    )
+    with pytest.raises(ProviderIdentityMismatchError):
+        provider.execute(request())
 
 
 def test_generation_options_reject_custom_json_types_depth_nodes_numbers_and_size():
@@ -1279,6 +1343,12 @@ def test_adapter_rejects_callback_type_identity_and_tampered_records():
             lambda actual_config, actual: transport(observed_model_id="spoofed"),
             ProviderIdentityMismatchError,
         ),
+        (
+            lambda actual_config, actual: transport(
+                observed_provider_revision="fabricated"
+            ),
+            ProviderIdentityMismatchError,
+        ),
     ):
         utc_clock, monotonic_clock = clocks()
         with pytest.raises(error):
@@ -1477,8 +1547,10 @@ def test_build_manifest_is_unspoofable_deterministic_and_binds_one_timestamp():
     assert calls == [True]
     assert first.provider == config.provider
     assert first.model_id == config.model_id
+    assert first.provider_revision == config.provider_revision
     assert first.config_hash == config.config_hash
     assert first.temperature == config.temperature
+    assert first.temperature_supported == config.temperature_supported
     assert first.seed == config.seed
     assert first.seed_supported == config.seed_supported
     assert first.tool_availability == config.tool_availability
@@ -1505,13 +1577,39 @@ def test_build_and_validators_reconstruct_exact_records_and_reject_subclasses_ta
         pass
 
     with pytest.raises(ProviderValidationError):
-        ConfigSubclass("p", "m", "r", 0.0, 1, True, (), TOKEN_ACCOUNTING_VERSION, {})
+        ConfigSubclass(
+            "p", "m", "r", 0.0, True, 1, True, (), TOKEN_ACCOUNTING_VERSION, {}
+        )
 
     config = configuration()
     req = request()
     run = manifest(config, req)
     validate_request_manifest(run, config, req)
     validate_execution(run, config, req, execution(config, req))
+
+    null_config = configuration(
+        provider_revision=None,
+        temperature=None,
+        temperature_supported=False,
+        seed=None,
+        seed_supported=False,
+    )
+    null_run = manifest(null_config, req)
+    null_execution = execution(
+        null_config, req, transport(observed_provider_revision=None)
+    )
+    forged_revision = replace(null_run, provider_revision="fabricated")
+    unsupported_temperature = replace(
+        run, temperature=None, temperature_supported=False
+    )
+    for forged_run, bound_config, bound_execution, affected_field in (
+        (forged_revision, null_config, null_execution, "provider_revision"),
+        (unsupported_temperature, config, execution(config, req), "temperature"),
+    ):
+        with pytest.raises(ManifestConsistencyError, match=affected_field):
+            validate_request_manifest(forged_run, bound_config, req)
+        with pytest.raises(ManifestConsistencyError, match=affected_field):
+            validate_execution(forged_run, bound_config, req, bound_execution)
 
     with pytest.raises(ManifestConsistencyError):
         validate_request_manifest(
@@ -1537,10 +1635,12 @@ def test_primary_comparability_fields_are_exact_and_all_included_mutations_fail(
         "dataset_hash",
         "provider",
         "model_id",
+        "provider_revision",
         "prompt_template_hash",
         "config_hash",
         "code_revision",
         "temperature",
+        "temperature_supported",
         "seed",
         "tool_availability",
     )
@@ -1552,19 +1652,27 @@ def test_primary_comparability_fields_are_exact_and_all_included_mutations_fail(
         "dataset_hash": "sha256:" + "3" * 64,
         "provider": "other",
         "model_id": "other",
+        "provider_revision": "other",
         "prompt_template_hash": "sha256:" + "4" * 64,
         "config_hash": "sha256:" + "5" * 64,
         "code_revision": "other",
         "temperature": 1.0,
+        "temperature_supported": False,
         "seed": 99,
         "tool_availability": ("other",),
     }
     for field in PRIMARY_COMPARABILITY_FIELDS:
+        changes = {field: replacements[field]}
+        if field == "temperature_supported":
+            changes["temperature"] = None
         with pytest.raises(IncompatibleManifestError) as raised:
-            compare_manifests(
-                base, replace(base, run_id="other", **{field: replacements[field]})
-            )
-        assert tuple(item.field for item in raised.value.differences) == (field,)
+            compare_manifests(base, replace(base, run_id="other", **changes))
+        expected_fields = (
+            ("temperature", "temperature_supported")
+            if field == "temperature_supported"
+            else (field,)
+        )
+        assert tuple(item.field for item in raised.value.differences) == expected_fields
         assert str(replacements[field]) not in str(raised.value)
 
 

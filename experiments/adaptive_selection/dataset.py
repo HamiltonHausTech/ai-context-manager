@@ -5,17 +5,17 @@ This fixture validates harness mechanics only and cannot support adaptive-select
 review remains a manual domain responsibility.
 """
 
-from collections import Counter
-from dataclasses import dataclass
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Dict, Mapping, Sequence, Tuple, Union
 
-from .schema import FeedbackEvent, SCHEMA_VERSION, TaskCase
+from .schema import SCHEMA_VERSION, FeedbackEvent, TaskCase
 
 DATASET_BUNDLE_VERSION = "1"
 PathLike = Union[str, Path]

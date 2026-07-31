@@ -96,10 +96,12 @@ def all_records():
         selector_version="selector-v1",
         provider="example-provider",
         model_id="exact-model-id",
+        provider_revision="provider-revision-1",
         prompt_template_hash="sha256:prompt",
         config_hash="sha256:config",
         code_revision="abc123",
         temperature=0.0,
+        temperature_supported=True,
         seed=7,
         seed_supported=True,
         tool_availability=("calculator",),
@@ -584,6 +586,14 @@ def test_run_manifest_reproducibility_seed_tools_and_timestamp():
         with pytest.raises(ValueError, match=f"{field} must be nonempty"):
             RunManifest.from_dict({**manifest, field: ""})
     with pytest.raises(
+        ValueError, match="temperature must be null when temperature_supported is false"
+    ):
+        RunManifest.from_dict({**manifest, "temperature_supported": False})
+    with pytest.raises(
+        ValueError, match="temperature is required when temperature_supported is true"
+    ):
+        RunManifest.from_dict({**manifest, "temperature": None})
+    with pytest.raises(
         ValueError, match="seed must be null when seed_supported is false"
     ):
         RunManifest.from_dict({**manifest, "seed_supported": False})
@@ -603,15 +613,38 @@ def test_utility_source_event_ids_reject_empty_tuple_explicitly():
         UtilityEstimate.from_dict({**estimate.to_dict(), "source_event_ids": []})
 
 
-def test_v2_is_first_candidate_wire_format_and_unreleased_v1_is_rejected_early():
+def test_v3_nullable_control_wire_format_rejects_prior_versions_early():
     fixture = Path(__file__).with_name("fixtures") / "selection_decision_v1.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
     # Prove version rejection wins over later tuple conversion/constructor processing.
     payload["selected_token_counts"] = None
 
-    assert SCHEMA_VERSION == "2"
-    with pytest.raises(ValueError, match="unsupported schema_version: 1"):
-        SelectionDecision.from_dict(payload)
+    assert SCHEMA_VERSION == "3"
+    for prior_version in ("1", "2"):
+        payload["schema_version"] = prior_version
+        with pytest.raises(
+            ValueError, match=f"unsupported schema_version: {prior_version}"
+        ):
+            SelectionDecision.from_dict(payload)
+
+
+def test_run_manifest_nullable_revision_and_temperature_are_explicit_and_roundtrip():
+    manifest = record_of_type(RunManifest)
+    payload = {
+        **manifest.to_dict(),
+        "provider_revision": None,
+        "temperature": None,
+        "temperature_supported": False,
+    }
+
+    reconstructed = RunManifest.from_dict(payload)
+    assert reconstructed.provider_revision is None
+    assert reconstructed.temperature is None
+    assert reconstructed.temperature_supported is False
+    assert reconstructed.to_dict() == payload
+
+    with pytest.raises(ValueError, match="provider_revision must be nonempty"):
+        RunManifest.from_dict({**payload, "provider_revision": ""})
 
 
 @pytest.mark.parametrize(

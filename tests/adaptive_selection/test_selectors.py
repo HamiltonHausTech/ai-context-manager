@@ -1,11 +1,11 @@
-from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import fields, is_dataclass, replace
 import inspect
 import math
 import sys
-from pathlib import Path
 import threading
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import fields, is_dataclass, replace
+from pathlib import Path
 
 import pytest
 
@@ -14,10 +14,10 @@ from experiments.adaptive_selection.schema import ContextItem, TaskInputs
 from experiments.adaptive_selection.selectors import (
     AdaptivePolicySelector,
     FullContextSelector,
-    reusable_features,
     SelectionResult,
     SimilarityTopKSelector,
     StaticPolicySelector,
+    reusable_features,
     validate_reusable_feature,
 )
 

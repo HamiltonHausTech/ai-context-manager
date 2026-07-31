@@ -41,10 +41,12 @@ PRIMARY_COMPARABILITY_FIELDS = (
     "dataset_hash",
     "provider",
     "model_id",
+    "provider_revision",
     "prompt_template_hash",
     "config_hash",
     "code_revision",
     "temperature",
+    "temperature_supported",
     "seed",
     "tool_availability",
 )
@@ -366,8 +368,9 @@ class _CanonicalRecord:
 class ProviderConfiguration(_CanonicalRecord):
     provider: str
     model_id: str
-    provider_revision: str
-    temperature: float
+    provider_revision: Optional[str]
+    temperature: Optional[float]
+    temperature_supported: bool
     seed: Optional[int]
     seed_supported: bool
     tool_availability: Tuple[str, ...]
@@ -383,9 +386,18 @@ class ProviderConfiguration(_CanonicalRecord):
         object.__setattr__(
             self,
             "provider_revision",
-            _short_string("provider_revision", self.provider_revision),
+            _optional_string(
+                "provider_revision", self.provider_revision, _MAX_SHORT_STRING
+            ),
         )
-        object.__setattr__(self, "temperature", _temperature(self.temperature))
+        if type(self.temperature_supported) is not bool:
+            _fail("temperature_supported must be boolean")
+        if self.temperature_supported:
+            if self.temperature is None:
+                _fail("temperature is required when temperature_supported is true")
+            object.__setattr__(self, "temperature", _temperature(self.temperature))
+        elif self.temperature is not None:
+            _fail("temperature must be null when temperature_supported is false")
         if type(self.seed_supported) is not bool:
             _fail("seed_supported must be boolean")
         if self.seed_supported:
@@ -401,7 +413,7 @@ class ProviderConfiguration(_CanonicalRecord):
         object.__setattr__(
             self,
             "config_hash",
-            _domain_hash("adaptive-provider-configuration-v1", self._hash_payload()),
+            _domain_hash("adaptive-provider-configuration-v2", self._hash_payload()),
         )
 
     def _hash_payload(self) -> Dict[str, Any]:
@@ -467,7 +479,7 @@ class ProviderRequest(_CanonicalRecord):
 class RawTransportResult(_CanonicalRecord):
     observed_provider: str
     observed_model_id: str
-    observed_provider_revision: str
+    observed_provider_revision: Optional[str]
     response_text: str
     raw_response_bytes: bytes
     input_tokens: int
@@ -490,8 +502,10 @@ class RawTransportResult(_CanonicalRecord):
         object.__setattr__(
             self,
             "observed_provider_revision",
-            _short_string(
-                "observed_provider_revision", self.observed_provider_revision
+            _optional_string(
+                "observed_provider_revision",
+                self.observed_provider_revision,
+                _MAX_SHORT_STRING,
             ),
         )
         object.__setattr__(
@@ -556,7 +570,7 @@ class ProviderExecution(_CanonicalRecord):
     request: ProviderRequest
     provider: str
     model_id: str
-    provider_revision: str
+    provider_revision: Optional[str]
     config_hash: str
     request_hash: str
     prompt_template_hash: str
@@ -1014,10 +1028,12 @@ def build_run_manifest(
         selector_version=inputs.selector_version,
         provider=config.provider,
         model_id=config.model_id,
+        provider_revision=config.provider_revision,
         prompt_template_hash=request.prompt_template_hash,
         config_hash=config.config_hash,
         code_revision=inputs.code_revision,
         temperature=config.temperature,
+        temperature_supported=config.temperature_supported,
         seed=config.seed,
         seed_supported=config.seed_supported,
         tool_availability=config.tool_availability,
@@ -1037,9 +1053,11 @@ def validate_request_manifest(
     expected = {
         "provider": config.provider,
         "model_id": config.model_id,
+        "provider_revision": config.provider_revision,
         "prompt_template_hash": request.prompt_template_hash,
         "config_hash": config.config_hash,
         "temperature": config.temperature,
+        "temperature_supported": config.temperature_supported,
         "seed": config.seed,
         "seed_supported": config.seed_supported,
         "tool_availability": config.tool_availability,

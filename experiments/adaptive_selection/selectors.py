@@ -7,11 +7,11 @@ The full-context reference uses deterministic candidate-order greedy packing: an
 that does not fit is excluded and later, smaller items may still be selected.
 """
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 import math
 import re
 import threading
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
