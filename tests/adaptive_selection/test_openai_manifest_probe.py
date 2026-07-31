@@ -4,6 +4,7 @@ import hashlib
 import importlib
 import inspect
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -1139,6 +1140,23 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
     frozen = contract()
     output = tmp_path / "artifacts"
     preflight = fake_preflight(frozen)
+    ambient = {
+        "OPENAI_LOG": "debug",
+        "SSL_CERT_FILE": str(tmp_path / "attacker-ca.pem"),
+        "SSL_CERT_DIR": str(tmp_path / "attacker-certs"),
+    }
+    for name, value in ambient.items():
+        monkeypatch.setenv(name, value)
+    previous_logging_disable = logging.root.manager.disable
+    dependency_observations = []
+
+    def validate_dependencies():
+        dependency_observations.append(
+            (
+                {name: os.environ.get(name) for name in ambient},
+                logging.root.manager.disable,
+            )
+        )
 
     monkeypatch.setattr(
         "experiments.adaptive_selection.openai_manifest_probe.load_probe_contract",
@@ -1160,7 +1178,7 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
             repo_root_override=tmp_path,
             output_dir_override=output,
             authority_dir_override=tmp_path / "authority",
-            dependency_validator=lambda: None,
+            dependency_validator=validate_dependencies,
             _protected_hash_resolver=_synthetic_protected_hashes,
         )
         == 1
@@ -1172,6 +1190,11 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
     assert artifact["request_attempted"] is False
     assert artifact["server_acceptance"] == "no"
     assert not (output / "attempt-consumed.json").exists()
+    assert dependency_observations == [
+        ({name: None for name in ambient}, logging.CRITICAL)
+    ]
+    assert {name: os.environ.get(name) for name in ambient} == ambient
+    assert logging.root.manager.disable == previous_logging_disable
 
 
 def test_live_command_fake_failure_writes_sanitized_artifact_once(
@@ -1412,7 +1435,10 @@ def test_live_client_ignores_ambient_routing_headers_and_proxy_settings(
     monkeypatch.setenv("OPENAI_ORG_ID", "evil-org")
     monkeypatch.setenv("OPENAI_PROJECT_ID", "evil-project")
     monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Evil: exfiltrate")
+    monkeypatch.setenv("OPENAI_LOG", "debug")
     monkeypatch.setenv("HTTPS_PROXY", "http://evil.invalid:8080")
+    monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "missing-attacker-ca.pem"))
+    monkeypatch.setenv("SSL_CERT_DIR", str(tmp_path / "missing-attacker-certs"))
     monkeypatch.setenv("SSLKEYLOGFILE", str(keylog))
     client = _create_live_client("test-only-api-key-value")
     try:

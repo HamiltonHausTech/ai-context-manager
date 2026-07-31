@@ -12,6 +12,7 @@ import hashlib
 import importlib
 import io
 import json
+import logging
 import os
 import pwd
 import re
@@ -1182,9 +1183,36 @@ def _load_live_modules() -> Tuple[Any, Any]:
     return openai, httpx
 
 
+PAID_AMBIENT_ENVIRONMENT = (
+    "OPENAI_LOG",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+)
+
+
+def _begin_paid_ambient_guard() -> Tuple[Dict[str, Optional[str]], int]:
+    saved = {name: os.environ.get(name) for name in PAID_AMBIENT_ENVIRONMENT}
+    for name in PAID_AMBIENT_ENVIRONMENT:
+        os.environ.pop(name, None)
+    previous_logging_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    return saved, previous_logging_disable
+
+
+def _end_paid_ambient_guard(
+    saved: Mapping[str, Optional[str]], previous_logging_disable: int
+) -> None:
+    for name in PAID_AMBIENT_ENVIRONMENT:
+        value = saved[name]
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+    logging.disable(previous_logging_disable)
+
+
 def _create_live_client(api_key: str) -> Any:
     """Build the sole official-host client with no retries, redirects, or env trust."""
-    openai, httpx = _load_live_modules()
     ambient_names = (
         "OPENAI_API_KEY",
         "OPENAI_ADMIN_KEY",
@@ -1193,6 +1221,9 @@ def _create_live_client(api_key: str) -> Any:
         "OPENAI_WEBHOOK_SECRET",
         "OPENAI_BASE_URL",
         "OPENAI_CUSTOM_HEADERS",
+        "OPENAI_LOG",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
         "SSLKEYLOGFILE",
     )
     saved = {name: os.environ.get(name) for name in ambient_names}
@@ -1202,6 +1233,7 @@ def _create_live_client(api_key: str) -> Any:
     http_client: Any = None
     failed = False
     try:
+        openai, httpx = _load_live_modules()
         ssl_context = ssl.create_default_context()
         if ssl_context.keylog_filename is not None:
             raise RuntimeError("TLS key logging remained enabled")
@@ -1416,6 +1448,7 @@ def main(
     configuration, _, _ = build_probe_records(contract, preflight["code_revision"])
     api_key: Optional[str] = None
     attempt_marker: Optional[Dict[str, Any]] = None
+    saved_paid_environment, previous_logging_disable = _begin_paid_ambient_guard()
     try:
         dependency_validator()
         api_key = _load_ignored_api_key(repo_root)
@@ -1489,6 +1522,8 @@ def main(
         started_timestamp = started
         completed_timestamp = _utc_now()
         latency_ms = (time.monotonic() - monotonic_start) * 1000.0
+    finally:
+        _end_paid_ambient_guard(saved_paid_environment, previous_logging_disable)
 
     failure_payload = {
         "contract_hash": preflight["contract_hash"],
