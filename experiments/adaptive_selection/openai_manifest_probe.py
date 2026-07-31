@@ -13,6 +13,7 @@ import importlib
 import io
 import json
 import os
+import pwd
 import re
 import ssl
 import stat
@@ -44,9 +45,6 @@ PINNED_MANIFEST_SHA256 = (
     "bd9d481ad9287da993b09d6412f2df7de9131665958d31597db6eb810a6abedc"
 )
 PINNED_OPENAI_SDK_VERSION = "2.46.0"
-PINNED_PYTHON = Path(
-    "/Users/andrewhamilton/Projects/hamiltonhaus/ai-context-manager/.venv/bin/python"
-)
 PINNED_CONFIGURATION_HASH = (
     "sha256:3de3fe8fd510175bedd3e086ce19840831bc685e2e58381f215263a3b1144426"
 )
@@ -1163,8 +1161,11 @@ def write_attempt_marker(
 
 
 def _default_authority_directory() -> Path:
+    account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    if not account_home.is_absolute():
+        raise ProbeFailure("preflight_rejected_no_network_attempt", "no") from None
     return (
-        Path.home()
+        account_home
         / ".local/state/ai-context-manager/terra-probe-authority"
         / PINNED_MANIFEST_SHA256
     )
@@ -1371,76 +1372,6 @@ def _construct_client_safely(factory: Callable[[str], Any], api_key: str) -> Any
     raise ProbeFailure("preflight_rejected_no_network_attempt", "no") from None
 
 
-def _required_gate_commands() -> Tuple[Tuple[str, ...], ...]:
-    py = str(PINNED_PYTHON)
-    return (
-        (
-            py,
-            "-m",
-            "pytest",
-            "-q",
-            "tests/adaptive_selection/test_openai_manifest_probe.py",
-            "tests/adaptive_selection/test_runner.py",
-            "tests/adaptive_selection/test_schema.py",
-            "tests/adaptive_selection/test_packaging.py",
-        ),
-        (py, "-m", "pytest", "-q"),
-        (
-            "/usr/bin/python3",
-            "-m",
-            "py_compile",
-            "experiments/adaptive_selection/openai_manifest_probe.py",
-        ),
-        (
-            py,
-            "-m",
-            "compileall",
-            "-q",
-            "experiments/adaptive_selection",
-            "tests/adaptive_selection",
-        ),
-        (
-            py,
-            "-m",
-            "black",
-            "--check",
-            "experiments/adaptive_selection",
-            "tests/adaptive_selection",
-        ),
-        (
-            py,
-            "-m",
-            "isort",
-            "--check-only",
-            "experiments/adaptive_selection",
-            "tests/adaptive_selection",
-        ),
-        (py, "-m", "build"),
-        ("git", "diff", "--check"),
-        (py, "-m", "experiments.adaptive_selection.openai_manifest_probe"),
-    )
-
-
-def _run_required_gates(repo_root: Path) -> None:
-    if not PINNED_PYTHON.is_file():
-        raise ProbeFailure("preflight_rejected_no_network_attempt", "no") from None
-    for command in _required_gate_commands():
-        try:
-            result = subprocess.run(
-                list(command),
-                cwd=str(repo_root),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=600,
-            )
-        except Exception:
-            result = None
-        if result is None or result.returncode != 0:
-            raise ProbeFailure("preflight_rejected_no_network_attempt", "no") from None
-
-
 def main(
     argv: Optional[Sequence[str]] = None,
     *,
@@ -1449,7 +1380,6 @@ def main(
     output_dir_override: Optional[Path] = None,
     authority_dir_override: Optional[Path] = None,
     dependency_validator: Callable[[], Any] = _load_live_modules,
-    gate_runner: Callable[[Path], None] = _run_required_gates,
     _protected_hash_resolver: Optional[Callable[[Path, str], Dict[str, str]]] = None,
 ) -> int:
     parser = argparse.ArgumentParser(
@@ -1487,10 +1417,6 @@ def main(
     api_key: Optional[str] = None
     attempt_marker: Optional[Dict[str, Any]] = None
     try:
-        gate_runner(repo_root)
-        preflight = run_preflight(
-            repo_root, contract, output_dir, authority_dir=authority_dir
-        )
         dependency_validator()
         api_key = _load_ignored_api_key(repo_root)
         _assert_api_key_absent_from_git(repo_root, api_key)

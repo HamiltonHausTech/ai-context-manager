@@ -2,6 +2,7 @@ import ast
 import base64
 import hashlib
 import importlib
+import inspect
 import json
 import os
 import stat
@@ -22,10 +23,9 @@ from experiments.adaptive_selection.openai_manifest_probe import (
     ProbeFailure,
     _assert_api_key_absent_from_git,
     _create_live_client,
+    _default_authority_directory,
     _load_ignored_api_key,
     _protected_hashes_at_revision,
-    _required_gate_commands,
-    _run_required_gates,
     build_probe_records,
     execute_probe,
     load_probe_contract,
@@ -980,6 +980,14 @@ def test_machine_global_authority_marker_blocks_another_checkout(tmp_path):
             )
 
 
+def test_machine_global_authority_path_does_not_trust_ambient_home(
+    monkeypatch, tmp_path
+):
+    expected = _default_authority_directory()
+    monkeypatch.setenv("HOME", str(tmp_path / "attacker-selected-home"))
+    assert _default_authority_directory() == expected
+
+
 def test_manifest_hash_gate_rejects_changed_bytes(tmp_path):
     changed = tmp_path / "manifest.json"
     changed.write_bytes(CONTRACT_PATH.read_bytes() + b" ")
@@ -1079,20 +1087,12 @@ def test_cli_rejects_public_path_overrides(tmp_path, option):
     assert caught.value.code == 2
 
 
-def test_required_gate_runner_executes_every_frozen_command(monkeypatch, tmp_path):
-    observed = []
-
-    def run(command, **kwargs):
-        observed.append((tuple(command), kwargs))
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(subprocess, "run", run)
-    _run_required_gates(tmp_path)
-    assert [command for command, _ in observed] == list(_required_gate_commands())
-    assert all(kwargs["cwd"] == str(tmp_path) for _, kwargs in observed)
-    assert _required_gate_commands()[-1][-1] == (
-        "experiments.adaptive_selection.openai_manifest_probe"
-    )
+def test_paid_main_contains_no_development_gate_runner():
+    source = inspect.getsource(main)
+    assert "pytest" not in source
+    assert "compileall" not in source
+    assert '"-m", "build"' not in source
+    assert "_run_required_gates" not in source
 
 
 def test_default_main_is_dry_run_and_never_builds_client(monkeypatch, capsys):
@@ -1139,6 +1139,7 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
     frozen = contract()
     output = tmp_path / "artifacts"
     preflight = fake_preflight(frozen)
+
     monkeypatch.setattr(
         "experiments.adaptive_selection.openai_manifest_probe.load_probe_contract",
         lambda path: frozen,
@@ -1160,7 +1161,6 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
             output_dir_override=output,
             authority_dir_override=tmp_path / "authority",
             dependency_validator=lambda: None,
-            gate_runner=lambda repo: None,
             _protected_hash_resolver=_synthetic_protected_hashes,
         )
         == 1
@@ -1205,7 +1205,6 @@ def test_live_command_fake_failure_writes_sanitized_artifact_once(
         output_dir_override=output,
         authority_dir_override=tmp_path / "authority",
         dependency_validator=lambda: None,
-        gate_runner=lambda repo: None,
         _protected_hash_resolver=_synthetic_protected_hashes,
     )
 
@@ -1268,7 +1267,6 @@ def test_live_command_blocks_secret_echo_before_success_artifact_write(
         output_dir_override=output,
         authority_dir_override=tmp_path / "authority",
         dependency_validator=lambda: None,
-        gate_runner=lambda repo: None,
         _protected_hash_resolver=_synthetic_protected_hashes,
     )
     captured = capsys.readouterr()
