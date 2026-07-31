@@ -142,6 +142,23 @@ EXPECTED_FIXTURE_HASH = (
 )
 
 
+def test_live_probe_dependencies_are_exactly_pinned():
+    root = Path(__file__).parents[2]
+    configuration = toml.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = configuration["project"]["dependencies"]
+
+    assert "openai==2.46.0" in dependencies
+    assert "httpx==0.28.1" in dependencies
+    assert not any(
+        dependency == "openai" or dependency.startswith("openai>=")
+        for dependency in dependencies
+    )
+    assert not any(
+        dependency == "httpx" or dependency.startswith("httpx>=")
+        for dependency in dependencies
+    )
+
+
 def test_setuptools_discovery_packages_adaptive_experiments():
     root = Path(__file__).parents[2]
     configuration = toml.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
