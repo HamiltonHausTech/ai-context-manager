@@ -1457,18 +1457,21 @@ def main(
 
         def marker() -> None:
             nonlocal attempt_marker
-            write_attempt_marker(
-                authority_dir,
-                preflight["contract_hash"],
-                preflight["code_revision"],
-                _utc_now(),
-            )
-            attempt_marker = write_attempt_marker(
-                output_dir,
-                preflight["contract_hash"],
-                preflight["code_revision"],
-                _utc_now(),
-            )
+            try:
+                write_attempt_marker(
+                    authority_dir,
+                    preflight["contract_hash"],
+                    preflight["code_revision"],
+                    _utc_now(),
+                )
+                attempt_marker = write_attempt_marker(
+                    output_dir,
+                    preflight["contract_hash"],
+                    preflight["code_revision"],
+                    _utc_now(),
+                )
+            except Exception:
+                raise ProbeFailure("artifact_write_failure", "no") from None
 
         manifest, execution, response_id = execute_probe(
             client,

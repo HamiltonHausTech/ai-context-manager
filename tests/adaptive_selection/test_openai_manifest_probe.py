@@ -1197,6 +1197,69 @@ def test_paid_command_pre_dispatch_failure_writes_no_attempt_artifact(
     assert logging.root.manager.disable == previous_logging_disable
 
 
+@pytest.mark.parametrize("failing_write", [1, 2])
+def test_marker_write_failure_is_local_and_never_dispatches(
+    monkeypatch, tmp_path, failing_write
+):
+    frozen = contract()
+    output = tmp_path / "artifacts"
+    authority = tmp_path / "authority"
+    raw, response = successful_pair()
+    client = FakeClient(FakeRaw(raw, response))
+    preflight = fake_preflight(frozen)
+    marker_writes = []
+
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.openai_manifest_probe.load_probe_contract",
+        lambda path: frozen,
+    )
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.openai_manifest_probe.run_preflight",
+        lambda *args, **kwargs: preflight,
+    )
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.openai_manifest_probe._load_ignored_api_key",
+        lambda path: "test-only-api-key-value",
+    )
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.openai_manifest_probe._assert_api_key_absent_from_git",
+        lambda *args: None,
+    )
+
+    def faulting_marker_write(directory, *args):
+        marker_writes.append(directory)
+        if len(marker_writes) == failing_write:
+            raise OSError("secret-bearing-marker-write-error")
+        return write_attempt_marker(directory, *args)
+
+    monkeypatch.setattr(
+        "experiments.adaptive_selection.openai_manifest_probe.write_attempt_marker",
+        faulting_marker_write,
+    )
+
+    status = main(
+        ["--execute-development-probe"],
+        client_factory=lambda key: client,
+        repo_root_override=tmp_path,
+        output_dir_override=output,
+        authority_dir_override=authority,
+        dependency_validator=lambda: None,
+        _protected_hash_resolver=_synthetic_protected_hashes,
+    )
+
+    artifact = verify_artifact(output / "failure.json")["artifact"]
+    assert status == 1
+    assert client.create.calls == []
+    assert artifact["failure_category"] == "artifact_write_failure"
+    assert artifact["server_acceptance"] == "no"
+    assert artifact["request_attempted"] is False
+    assert not (output / "attempt-consumed.json").exists()
+    assert (authority / "attempt-consumed.json").exists() is (failing_write == 2)
+    assert (
+        "secret-bearing-marker-write-error" not in (output / "failure.json").read_text()
+    )
+
+
 def test_live_command_fake_failure_writes_sanitized_artifact_once(
     monkeypatch, tmp_path, capsys
 ):
