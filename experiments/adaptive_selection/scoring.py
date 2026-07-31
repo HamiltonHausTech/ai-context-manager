@@ -5,13 +5,13 @@ has no access to selector conditions, retrieval measurements, context labels, or
 telemetry.  Semantic judgments must be made upstream and frozen as ``BlindedAssessment``.
 """
 
-from collections.abc import Mapping
-from dataclasses import dataclass, fields, is_dataclass
-from decimal import Context, Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass, fields, is_dataclass
+from decimal import ROUND_HALF_EVEN, Context, Decimal, InvalidOperation, localcontext
 from typing import Any, Dict, Optional, Tuple, Type, TypeVar, cast
 
 from .schema import CriterionScore, RubricCriterion, ScoringRubric

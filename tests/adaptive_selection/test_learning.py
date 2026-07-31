@@ -1,8 +1,8 @@
-from collections.abc import Mapping
-from dataclasses import FrozenInstanceError, dataclass, replace
 import ast
 import inspect
 import json
+from collections.abc import Mapping
+from dataclasses import FrozenInstanceError, dataclass, replace
 from pathlib import Path
 
 import pytest

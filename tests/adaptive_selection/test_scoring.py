@@ -1,7 +1,7 @@
 import copy
 from collections.abc import Sequence
 from dataclasses import FrozenInstanceError, dataclass, replace
-from decimal import Context, ROUND_HALF_EVEN, localcontext
+from decimal import ROUND_HALF_EVEN, Context, localcontext
 from inspect import signature
 
 import pytest
