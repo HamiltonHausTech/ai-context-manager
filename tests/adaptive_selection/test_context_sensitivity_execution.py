@@ -66,6 +66,37 @@ def observed_metadata(index=0, content_type="application/problem+json"):
     }
 
 
+def success_raw(index=0, structured=None, usage=None, output_items=None):
+    structured = VALID_STRUCTURED if structured is None else structured
+    usage = SUCCESS_USAGE if usage is None else usage
+    if output_items is None:
+        text = json.dumps(structured, separators=(",", ":"))
+        output_items = [
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": text}],
+            }
+        ]
+    document = {
+        "id": f"resp_observed_{index}",
+        "model": execution.PINNED_MODEL,
+        "status": "completed",
+        "incomplete_details": None,
+        "output": output_items,
+        "usage": {
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "total_tokens": usage["total_tokens"],
+            "input_tokens_details": {
+                "cached_tokens": usage["cached_input_tokens"],
+                "cache_write_tokens": usage["cache_write_input_tokens"],
+            },
+        },
+    }
+    return json.dumps(document, separators=(",", ":")).encode()
+
+
 def private_root(tmp_path, name):
     root = tmp_path / name
     root.mkdir(mode=0o700, parents=True)
@@ -362,7 +393,7 @@ def test_global_terminal_is_authoritative_raw_once_and_local_is_mirror(tmp_path)
             "timestamped_evidence": ["1. [time] evidence"],
         },
         structured_response=VALID_STRUCTURED,
-        raw_bytes=b'{"ok":true}',
+        raw_bytes=success_raw(0),
         recorded_at=NOW,
         usage=SUCCESS_USAGE,
         actual_cost=SUCCESS_ACTUAL_COST,
@@ -478,6 +509,7 @@ def test_machine_global_nonblocking_lock_allows_one_cross_checkout_winner(tmp_pa
 
 
 def _publish_nine_successes(local, global_root, context):
+    _, visible_evidence = execution._validate_requests(ROOT)
     for index, (cell_id, request_hash) in enumerate(
         zip(EXECUTION_ORDER, REQUEST_HASHES)
     ):
@@ -493,12 +525,9 @@ def _publish_nine_successes(local, global_root, context):
             kind="success",
             dispatch_invoked=True,
             server_acceptance="yes",
-            provider_visible_evidence={
-                "task": f"task {index}",
-                "timestamped_evidence": [f"1. [2026-08-04T00:00:00Z] evidence {index}"],
-            },
+            provider_visible_evidence=visible_evidence[index],
             structured_response=VALID_STRUCTURED,
-            raw_bytes=("raw-%d" % index).encode(),
+            raw_bytes=success_raw(index),
             recorded_at=NOW,
             usage=SUCCESS_USAGE,
             actual_cost=SUCCESS_ACTUAL_COST,
@@ -530,8 +559,18 @@ def test_blind_export_uses_random_ids_order_full_assessment_material_and_no_leak
         "critical_findings",
     }
     assert all(set(item) == required for item in export["assessments"])
-    folded = json.dumps(export).casefold()
-    for forbidden in list(EXECUTION_ORDER) + [
+
+    def nested_keys(value):
+        if isinstance(value, dict):
+            return set(value).union(
+                *(nested_keys(item) for item in value.values()), set()
+            )
+        if isinstance(value, list):
+            return set().union(*(nested_keys(item) for item in value), set())
+        return set()
+
+    keys = nested_keys(export)
+    for forbidden_key in {
         "condition",
         "family",
         "scenario_id",
@@ -541,14 +580,37 @@ def test_blind_export_uses_random_ids_order_full_assessment_material_and_no_leak
         "request_hash",
         "code_revision",
         "provider_request_id",
-        "/raw/",
-    ]:
-        assert forbidden.casefold() not in folded
+        "canonical_cell_id",
+        "execution_position",
+    }:
+        assert forbidden_key not in keys
+    folded = json.dumps(export).casefold()
+    for forbidden_value in list(EXECUTION_ORDER) + ["/raw/"]:
+        assert forbidden_value.casefold() not in folded
+    _, visible_evidence = execution._validate_requests(ROOT)
+    mapping = execution.verify_mapping(
+        mapping_path,
+        {
+            "authorization_id": context.authorization_id,
+            "nonce": context.authorization_nonce,
+            "blind_mapping_commitment": context.blind_mapping_commitment,
+        },
+    )["mapping"]
+    by_assessment = {item["assessment_id"]: item for item in export["assessments"]}
+    for item in mapping["blind_order"]:
+        index = EXECUTION_ORDER.index(item["canonical_cell_id"])
+        assessment = by_assessment[item["assessment_id"]]
+        assert assessment["task"] == visible_evidence[index]["task"]
+        assert (
+            assessment["provider_visible_timestamped_evidence"]
+            == visible_evidence[index]["timestamped_evidence"]
+        )
 
 
 def test_blind_export_failure_is_not_ready_and_has_no_score_or_verdict(tmp_path):
     local, global_root, _, mapping_path, _, candidate, approval = prepare(tmp_path)
     context = authority_context(candidate, approval)
+    _, visible_evidence = execution._validate_requests(ROOT)
     for index, (cell_id, request_hash) in enumerate(
         zip(EXECUTION_ORDER, REQUEST_HASHES)
     ):
@@ -564,12 +626,9 @@ def test_blind_export_failure_is_not_ready_and_has_no_score_or_verdict(tmp_path)
             kind="failure" if index == 0 else "success",
             dispatch_invoked=True,
             server_acceptance="unknown" if index == 0 else "yes",
-            provider_visible_evidence={
-                "task": f"task {index}",
-                "timestamped_evidence": ["1. [time] evidence"],
-            },
+            provider_visible_evidence=visible_evidence[index],
             structured_response=None if index == 0 else VALID_STRUCTURED,
-            raw_bytes=None if index == 0 else bytes([index]),
+            raw_bytes=None if index == 0 else success_raw(index),
             failure_category="transport_error" if index == 0 else None,
             recorded_at=NOW,
             usage=None if index == 0 else SUCCESS_USAGE,
@@ -880,7 +939,7 @@ def test_rehashed_success_evidence_and_cost_tampering_is_rejected(tmp_path, muta
         server_acceptance="yes",
         provider_visible_evidence={"task": "task", "timestamped_evidence": []},
         structured_response=VALID_STRUCTURED,
-        raw_bytes=b"valid-success-raw",
+        raw_bytes=success_raw(0),
         recorded_at=NOW,
         usage=SUCCESS_USAGE,
         actual_cost=SUCCESS_ACTUAL_COST,
@@ -899,6 +958,141 @@ def test_rehashed_success_evidence_and_cost_tampering_is_rejected(tmp_path, muta
     _rewrite_private(index_path, index)
     with pytest.raises(execution.ExecutionFailure):
         execution.verify_terminal(global_root, cell_id, REQUEST_HASHES[0], context)
+
+
+@pytest.mark.parametrize(
+    "raw_mutation",
+    ["non_json", "failed_status", "altered_structure", "altered_usage"],
+)
+def test_rehashed_raw_semantic_tampering_is_rejected(tmp_path, raw_mutation):
+    local, global_root, _, _, _, candidate, approval = prepare(tmp_path)
+    context = authority_context(candidate, approval)
+    cell_id = EXECUTION_ORDER[0]
+    _, visible_evidence = execution._validate_requests(ROOT)
+    execution.publish_authority_claim(
+        global_root, local, cell_id, REQUEST_HASHES[0], context, NOW
+    )
+    execution.publish_terminal(
+        global_root,
+        local,
+        cell_id,
+        REQUEST_HASHES[0],
+        context,
+        kind="success",
+        dispatch_invoked=True,
+        server_acceptance="yes",
+        provider_visible_evidence=visible_evidence[0],
+        structured_response=VALID_STRUCTURED,
+        raw_bytes=success_raw(0),
+        recorded_at=NOW,
+        usage=SUCCESS_USAGE,
+        actual_cost=SUCCESS_ACTUAL_COST,
+        conservative_cost_upper_bound=SUCCESS_UPPER_COST,
+        response_metadata=observed_metadata(),
+    )
+    if raw_mutation == "non_json":
+        changed = b"NOT JSON AND NOT A PROVIDER RESPONSE"
+    else:
+        document = json.loads(success_raw(0))
+        if raw_mutation == "failed_status":
+            document["status"] = "failed"
+            document["model"] = "attacker-model"
+        elif raw_mutation == "altered_structure":
+            altered = dict(VALID_STRUCTURED, diagnosis="Different diagnosis.")
+            document["output"][0]["content"][0]["text"] = json.dumps(
+                altered, separators=(",", ":")
+            )
+        else:
+            document["usage"]["input_tokens"] = 11
+            document["usage"]["total_tokens"] = 14
+        changed = json.dumps(document, separators=(",", ":")).encode()
+    raw_path = global_root / "raw" / f"{cell_id}.raw"
+    raw_path.unlink()
+    execution._write_private_bytes_no_overwrite(raw_path, changed)
+    terminal_path = global_root / "terminals" / f"{cell_id}.terminal.json"
+    index_path = global_root / "terminal-index" / f"{cell_id}.json"
+    value = json.loads(terminal_path.read_bytes())
+    value["terminal"]["raw_response_sha256"] = execution._sha256_bytes(changed)
+    value["terminal_digest"] = execution.sha256_canonical(value["terminal"])
+    index = json.loads(index_path.read_bytes())
+    index["terminal_index"]["terminal_digest"] = value["terminal_digest"]
+    index["terminal_index_digest"] = execution.sha256_canonical(index["terminal_index"])
+    _rewrite_private(terminal_path, value)
+    _rewrite_private(index_path, index)
+    with pytest.raises(execution.ExecutionFailure):
+        execution.verify_terminal(
+            global_root,
+            cell_id,
+            REQUEST_HASHES[0],
+            context,
+            visible_evidence[0],
+        )
+
+
+def test_rehashed_provider_evidence_leakage_is_rejected_before_blind_export(tmp_path):
+    local, global_root, _, mapping_path, _, candidate, approval = prepare(tmp_path)
+    context = authority_context(candidate, approval)
+    _publish_nine_successes(local, global_root, context)
+    cell_id = EXECUTION_ORDER[0]
+    terminal_path = global_root / "terminals" / f"{cell_id}.terminal.json"
+    index_path = global_root / "terminal-index" / f"{cell_id}.json"
+    value = json.loads(terminal_path.read_bytes())
+    value["terminal"]["provider_visible_evidence"]["condition"] = "correct"
+    value["terminal"]["provider_visible_evidence"]["canonical_cell_id"] = cell_id
+    value["terminal_digest"] = execution.sha256_canonical(value["terminal"])
+    index = json.loads(index_path.read_bytes())
+    index["terminal_index"]["terminal_digest"] = value["terminal_digest"]
+    index["terminal_index_digest"] = execution.sha256_canonical(index["terminal_index"])
+    _rewrite_private(terminal_path, value)
+    _rewrite_private(index_path, index)
+    with pytest.raises(execution.ExecutionFailure):
+        execution.build_blind_assessment(
+            ROOT, global_root, local, mapping_path, context
+        )
+
+
+def test_rehashed_dispatched_failure_cannot_drop_frozen_request_evidence(tmp_path):
+    local, global_root, _, _, _, candidate, approval = prepare(tmp_path)
+    context = authority_context(candidate, approval)
+    cell_id = EXECUTION_ORDER[0]
+    _, visible_evidence = execution._validate_requests(ROOT)
+    execution.publish_authority_claim(
+        global_root, local, cell_id, REQUEST_HASHES[0], context, NOW
+    )
+    execution.publish_terminal(
+        global_root,
+        local,
+        cell_id,
+        REQUEST_HASHES[0],
+        context,
+        kind="failure",
+        dispatch_invoked=True,
+        server_acceptance="unknown",
+        provider_visible_evidence=visible_evidence[0],
+        structured_response=None,
+        raw_bytes=None,
+        failure_category="transport_error",
+        recorded_at=NOW,
+        conservative_cost_upper_bound="0.00001",
+    )
+    terminal_path = global_root / "terminals" / f"{cell_id}.terminal.json"
+    index_path = global_root / "terminal-index" / f"{cell_id}.json"
+    value = json.loads(terminal_path.read_bytes())
+    value["terminal"]["provider_visible_evidence"] = None
+    value["terminal_digest"] = execution.sha256_canonical(value["terminal"])
+    index = json.loads(index_path.read_bytes())
+    index["terminal_index"]["terminal_digest"] = value["terminal_digest"]
+    index["terminal_index_digest"] = execution.sha256_canonical(index["terminal_index"])
+    _rewrite_private(terminal_path, value)
+    _rewrite_private(index_path, index)
+    with pytest.raises(execution.ExecutionFailure):
+        execution.verify_terminal(
+            global_root,
+            cell_id,
+            REQUEST_HASHES[0],
+            context,
+            visible_evidence[0],
+        )
 
 
 @pytest.mark.parametrize("publication_failure", ["terminals", "terminal-index"])
@@ -931,7 +1125,7 @@ def test_terminal_publication_crash_windows_abort_and_never_overwrite(
             server_acceptance="yes",
             provider_visible_evidence={"task": "task", "timestamped_evidence": []},
             structured_response=VALID_STRUCTURED,
-            raw_bytes=b"raw-once",
+            raw_bytes=success_raw(0),
             recorded_at=NOW,
             usage=SUCCESS_USAGE,
             actual_cost=SUCCESS_ACTUAL_COST,
@@ -955,14 +1149,14 @@ def test_terminal_publication_crash_windows_abort_and_never_overwrite(
             server_acceptance="yes",
             provider_visible_evidence={"task": "task", "timestamped_evidence": []},
             structured_response=VALID_STRUCTURED,
-            raw_bytes=b"replacement",
+            raw_bytes=success_raw(0),
             recorded_at=NOW,
             usage=SUCCESS_USAGE,
             actual_cost=SUCCESS_ACTUAL_COST,
             conservative_cost_upper_bound=SUCCESS_UPPER_COST,
             response_metadata=observed_metadata(),
         )
-    assert (global_root / "raw" / f"{cell_id}.raw").read_bytes() == b"raw-once"
+    assert (global_root / "raw" / f"{cell_id}.raw").read_bytes() == success_raw(0)
 
 
 def test_parent_revalidation_failure_preserves_winner_and_prevents_overwrite(
@@ -1043,6 +1237,60 @@ def test_orphan_finalization_rejects_wrong_owner_context_echo_or_time(
     assert not (
         global_root / "terminals" / f"{EXECUTION_ORDER[0]}.terminal.json"
     ).exists()
+
+
+def test_secret_canary_omits_unsafe_raw_but_keeps_exact_request_evidence(
+    tmp_path, monkeypatch
+):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        candidate,
+        approval,
+    ) = live_fixture(tmp_path, monkeypatch)
+    api_key = "placeholder-key"
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["unsafe_echo"] = api_key
+    client = SequenceClient(
+        [TransportRaw(json.dumps(document, separators=(",", ":")).encode(), response)]
+    )
+    result = execution.execute_authorized_manifest(
+        ROOT,
+        global_root,
+        local,
+        candidate_path,
+        approval_path,
+        mapping_path,
+        api_key=api_key,
+        client_factory=lambda _: client,
+        now=NOW,
+    )
+    assert result == {
+        "status": "run_incomplete",
+        "dispatches": 1,
+        "successes": 0,
+        "failures": 1,
+        "pending": 8,
+    }
+    context = authority_context(candidate, approval)
+    _, visible_evidence = execution._validate_requests(ROOT)
+    terminal = execution.verify_terminal(
+        global_root,
+        EXECUTION_ORDER[0],
+        REQUEST_HASHES[0],
+        context,
+        visible_evidence[0],
+    )["terminal"]
+    assert terminal["failure_category"] == "secret_detected"
+    assert terminal["provider_visible_evidence"] == visible_evidence[0]
+    assert terminal["raw_response_sha256"] is None
+    assert not (global_root / "raw" / f"{EXECUTION_ORDER[0]}.raw").exists()
+    assert len(client.calls) == 1
+    assert client.closed is True
 
 
 def transport_pair(**changes):
@@ -1173,6 +1421,59 @@ def test_absent_cache_write_is_unknown_not_zero_and_upper_still_exact():
 
 
 @pytest.mark.parametrize(
+    ("raw_detail", "sdk_cached", "sdk_cache_write"),
+    [
+        (None, 99, None),
+        ({"cached_tokens": 10}, 10, 0),
+    ],
+)
+def test_raw_and_sdk_usage_detail_presence_contradictions_are_rejected(
+    raw_detail, sdk_cached, sdk_cache_write
+):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    if raw_detail is None:
+        document["usage"].pop("input_tokens_details")
+    else:
+        document["usage"]["input_tokens_details"] = raw_detail
+    response.usage.input_tokens_details = SimpleNamespace(
+        cached_tokens=sdk_cached, cache_write_tokens=sdk_cache_write
+    )
+    with pytest.raises(execution.ExecutionFailure):
+        execution.validate_usage(document, response)
+
+
+@pytest.mark.parametrize(
+    "reasoning_item",
+    [
+        {"type": "reasoning", "tool_call": {"name": "exfiltrate"}},
+        {"type": "reasoning", "action": "tool"},
+        {"type": "reasoning", "arguments": {"secret": "x"}},
+        {"type": "reasoning", "unknown": "unmodeled"},
+    ],
+)
+def test_reasoning_items_reject_every_unmodeled_or_action_field(reasoning_item):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["output"].insert(0, reasoning_item)
+    response.output_text = document["output"][1]["content"][0]["text"]
+    with pytest.raises(execution.ExecutionFailure) as caught:
+        execution.dispatch_once(
+            SequenceClient(
+                [
+                    TransportRaw(
+                        json.dumps(document, separators=(",", ":")).encode(),
+                        response,
+                    )
+                ]
+            ),
+            execution._validate_requests(ROOT)[0][0],
+            REQUEST_HASHES[0],
+        )
+    assert caught.value.category == "malformed_response"
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         lambda value: value.update(extra=True),
@@ -1284,6 +1585,41 @@ def test_real_sdk_mocktransport_success_is_one_stateless_literal_post():
     finally:
         client.close()
     assert result.structured_response == VALID_STRUCTURED
+    assert len(seen) == 1
+
+
+def test_real_sdk_mocktransport_rejects_action_like_reasoning_item_once():
+    import httpx
+
+    requests, _ = execution._validate_requests(ROOT)
+    document = sdk_response_document()
+    document["output"].insert(
+        0,
+        {
+            "type": "reasoning",
+            "id": "rs_untrusted",
+            "summary": [],
+            "tool_call": {"name": "unmodeled_action"},
+        },
+    )
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json", "x-request-id": "req_sdk_2"},
+            json=document,
+        )
+
+    client = sdk_client(handler)
+    try:
+        with pytest.raises(execution.ExecutionFailure) as caught:
+            execution.dispatch_once(client, requests[0], REQUEST_HASHES[0])
+    finally:
+        client.close()
+    assert caught.value.category == "malformed_response"
+    assert caught.value.raw_bytes is not None
     assert len(seen) == 1
 
 
@@ -1634,6 +1970,54 @@ def test_fake_client_nine_successes_claim_before_exact_stateless_dispatch_and_cl
     }
     assert client.calls == requests
     assert client.closed is True
+
+
+def test_authorization_is_rechecked_before_every_claim_and_stops_after_expiry(
+    tmp_path, monkeypatch
+):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        candidate,
+        approval,
+    ) = live_fixture(tmp_path, monkeypatch)
+    client = SequenceClient(nine_transport_results())
+    observations = iter(
+        [
+            "2026-08-04T12:59:59.000000Z",
+            "2026-08-04T13:00:00.000000Z",
+            "2026-08-04T13:00:00.000001Z",
+        ]
+    )
+    with pytest.raises(execution.ExecutionFailure) as caught:
+        execution.execute_authorized_manifest(
+            ROOT,
+            global_root,
+            local,
+            candidate_path,
+            approval_path,
+            mapping_path,
+            api_key="«redacted:sk-…»",
+            client_factory=lambda _: client,
+            now=NOW,
+            _clock=lambda: next(observations),
+        )
+    assert caught.value.category == "authorization_not_live_no_network_attempt"
+    assert len(client.calls) == 1
+    assert client.closed is True
+    context = authority_context(candidate, approval)
+    _, visible_evidence = execution._validate_requests(ROOT)
+    execution.verify_terminal(
+        global_root,
+        EXECUTION_ORDER[0],
+        REQUEST_HASHES[0],
+        context,
+        visible_evidence[0],
+    )
+    assert not (global_root / "claims" / f"{EXECUTION_ORDER[1]}.claim.json").exists()
 
 
 def test_fake_client_provider_failure_continues_then_all_terminal_resume_builds_no_client(

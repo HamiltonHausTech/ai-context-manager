@@ -74,6 +74,8 @@ Live execution is permitted only from the ordinary `main` checkout when:
 - the host, account, and credential fingerprints match; and
 - the authorization window is current.
 
+The process obtains a fresh UTC observation immediately before every authority claim and rejects the cell without claim or dispatch if that observation is after expiry. Authorization validity is therefore not frozen at process start. A second fresh observation timestamps the terminal after the one allowed attempt.
+
 The paid process does not fetch, build, test, install, or resolve packages. Those gates run beforehand against the exact commit. From before SDK import and TLS/client construction until after raw handling, terminal persistence, and client close, the process removes provider routing, organization, project, custom-header, proxy, certificate, TLS-keylog, and SDK-log ambient variables and disables process logging. The client uses only the official OpenAI HTTPS endpoint, standard TLS verification, `trust_env=false`, redirects disabled, and `max_retries=0`.
 
 ## Cooperative authority state
@@ -118,6 +120,8 @@ A provider refusal, malformed response, HTTP error, connection ambiguity, invali
 
 Raw responses and terminal metadata remain private and Git-ignored with `0700` directories and `0600` files. They must never be printed, committed, or placed in CI artifacts. Fixed public status messages exclude credentials, prompts, provider text, exception text, and private identifiers.
 
+For every recorded success, verification reparses the immutable raw bytes with duplicate-key rejection and replays completion/refusal state, pinned model, response ID, the exact no-action output-item allowlists, sole output text, bounded response schema, usage, and pricing. Those independently derived values must equal the terminal projections. Raw and SDK usage-detail presence and values must agree; SDK-only nonzero cache reads or an SDK cache-write value absent from raw evidence are rejected. Resume and blind export also reconstruct the provider-visible task and evidence from the frozen contract and require exact equality with the terminal record. Rehashing altered raw bytes or altered provider-visible evidence therefore does not make them acceptable.
+
 Blind export first verifies all authoritative claims, terminals, raw hashes, and the precommitted private mapping. It emits, in precommitted blind order:
 
 - randomized assessment ID;
@@ -128,7 +132,7 @@ Blind export first verifies all authoritative claims, terminals, raw hashes, and
 - adjudication rules; and
 - critical findings.
 
-It excludes canonical cell ID, condition, family/scenario identifiers, condition anchors, provenance and source roles, execution order/position/timestamps/latency, provider request/response IDs, hashes, paths, and filenames. The private mapping is retained until annotations are locked.
+It adds no canonical cell ID, condition, family/scenario identifiers, condition anchors, provenance/source-role metadata, execution order/position/timestamps/latency, provider request/response IDs, evidence paths, or controller filenames. The substantive task and timestamped incident evidence are preserved exactly as sent to the provider; those frozen strings can themselves mention source revisions or filenames needed to assess the incident and are not controller metadata. The private mapping is retained until annotations are locked.
 
 `assessment_ready` is true only for nine verified valid successes. Any failed or ambiguous cell forces `assessment_ready=false`; no score or preregistered verdict may be derived.
 

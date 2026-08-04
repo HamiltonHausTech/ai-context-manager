@@ -199,6 +199,21 @@ def _parse_time(value: Any) -> datetime:
     return parsed
 
 
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _require_live_authority(context: "AuthorityContext", observed_at: str) -> None:
+    observed = _parse_time(observed_at)
+    if not (
+        _parse_time(context.issued_at)
+        <= _parse_time(context.approved_at)
+        <= observed
+        <= _parse_time(context.expires_at)
+    ):
+        _fail("authorization_not_live_no_network_attempt")
+
+
 def _hex_form(value: Any, prefix: str, hex_length: int) -> bool:
     return (
         type(value) is str
@@ -1213,7 +1228,11 @@ def publish_terminal(
 
 
 def verify_terminal(
-    global_root: Path, cell_id: str, request_hash: str, context: AuthorityContext
+    global_root: Path,
+    cell_id: str,
+    request_hash: str,
+    context: AuthorityContext,
+    expected_provider_visible_evidence: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     claim = verify_claim_file(
         _claim_path(global_root, cell_id), cell_id, request_hash, context
@@ -1293,7 +1312,17 @@ def verify_terminal(
             or terminal["conservative_cost_upper_bound"] != expected_upper
         ):
             _fail()
-    _parse_time(terminal["recorded_at"])
+    if (
+        expected_provider_visible_evidence is not None
+        and terminal["dispatch_invoked"] is True
+        and terminal["provider_visible_evidence"]
+        != dict(expected_provider_visible_evidence)
+    ):
+        _fail()
+    if _parse_time(terminal["recorded_at"]) < _parse_time(
+        claim["claim"]["consumed_at"]
+    ):
+        _fail()
     expected_index = {
         "version": TERMINAL_INDEX_VERSION,
         "contract_lineage": CONTRACT_LINEAGE,
@@ -1319,13 +1348,19 @@ def verify_terminal(
             or terminal["response_metadata"]["observed_model"] != PINNED_MODEL
         ):
             _fail()
-        try:
-            validate_task12b_response(terminal["structured_response"])
-        except ExecutionFailure:
+        raw_bytes = _read_private_bytes(_raw_path(global_root, cell_id))
+        if _sha256_bytes(raw_bytes) != terminal["raw_response_sha256"]:
             _fail()
+        projection = _replay_raw_success(raw_bytes)
         if (
-            _sha256_bytes(_read_private_bytes(_raw_path(global_root, cell_id)))
-            != terminal["raw_response_sha256"]
+            terminal["structured_response"] != projection["structured_response"]
+            or terminal["usage"] != projection["usage"]
+            or terminal["actual_cost"] != projection["actual_cost"]
+            or terminal["conservative_cost_upper_bound"]
+            != projection["conservative_cost_upper_bound"]
+            or terminal["response_metadata"]["response_id"] != projection["response_id"]
+            or terminal["response_metadata"]["observed_model"]
+            != projection["observed_model"]
         ):
             _fail()
     elif terminal["kind"] in {"failure", "invalid_ambiguous"}:
@@ -1593,6 +1628,8 @@ def build_blind_assessment(
     )
     mapping = mapping_envelope["mapping"]
     material = _contract_assessment_material(repo_root)
+    _, expected_visible_evidence = _validate_requests(repo_root)
+    expected_by_cell = dict(zip(EXECUTION_ORDER, expected_visible_evidence))
     terminal_by_cell: Dict[str, Dict[str, Any]] = {}
     for cell_id, request_hash in zip(EXECUTION_ORDER, REQUEST_HASHES):
         if (
@@ -1601,7 +1638,11 @@ def build_blind_assessment(
         ):
             _fail()
         terminal_by_cell[cell_id] = verify_terminal(
-            global_root, cell_id, request_hash, context
+            global_root,
+            cell_id,
+            request_hash,
+            context,
+            expected_by_cell[cell_id],
         )["terminal"]
     assessments = []
     for item in mapping["blind_order"]:
@@ -1970,10 +2011,31 @@ def _raw_text(document: Mapping[str, Any]) -> str:
         if type(item) is not dict:
             _fail("malformed_response")
         if item.get("type") == "reasoning":
-            if any(key in item for key in ("content", "action", "arguments")):
+            if not set(item).issubset(
+                {"id", "type", "summary", "encrypted_content", "status"}
+            ):
+                _fail("malformed_response")
+            if "id" in item and _safe_request_id(item["id"]) is None:
+                _fail("malformed_response")
+            if "summary" in item and type(item["summary"]) is not list:
+                _fail("malformed_response")
+            if "encrypted_content" in item and not (
+                item["encrypted_content"] is None
+                or type(item["encrypted_content"]) is str
+            ):
+                _fail("malformed_response")
+            if "status" in item and item["status"] not in {None, "completed"}:
                 _fail("malformed_response")
             continue
         if item.get("type") != "message":
+            _fail("malformed_response")
+        if not set(item).issubset({"id", "type", "status", "role", "content", "phase"}):
+            _fail("malformed_response")
+        if "id" in item and _safe_request_id(item["id"]) is None:
+            _fail("malformed_response")
+        if "status" in item and item["status"] not in {None, "completed"}:
+            _fail("malformed_response")
+        if "phase" in item and item["phase"] not in {None, "final_answer"}:
             _fail("malformed_response")
         messages.append(item)
     if len(messages) != 1 or messages[0].get("role") != "assistant":
@@ -1983,6 +2045,14 @@ def _raw_text(document: Mapping[str, Any]) -> str:
         _fail("malformed_response")
     if content[0].get("type") == "refusal" or content[0].get("refusal"):
         _fail("provider_refusal")
+    if not set(content[0]).issubset({"type", "text", "annotations", "logprobs"}):
+        _fail("malformed_response")
+    if "annotations" in content[0] and type(content[0]["annotations"]) is not list:
+        _fail("malformed_response")
+    if "logprobs" in content[0] and not (
+        content[0]["logprobs"] is None or type(content[0]["logprobs"]) is list
+    ):
+        _fail("malformed_response")
     if (
         content[0].get("type") != "output_text"
         or type(content[0].get("text")) is not str
@@ -2042,10 +2112,9 @@ def _exact_nonnegative(value: Any) -> int:
     return cast(int, value)
 
 
-def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]:
+def _raw_usage(document: Mapping[str, Any]) -> Dict[str, Any]:
     raw = document.get("usage")
-    sdk = getattr(response, "usage", None)
-    if type(raw) is not dict or sdk is None:
+    if type(raw) is not dict:
         _fail("invalid_response")
     values = {
         name: _exact_nonnegative(raw.get(name))
@@ -2057,7 +2126,7 @@ def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]
     if details is not None and type(details) is not dict:
         _fail("invalid_response")
     cached = (
-        _exact_nonnegative(details.get("cached_tokens", 0))
+        _exact_nonnegative(details["cached_tokens"])
         if details is not None and "cached_tokens" in details
         else 0
     )
@@ -2068,27 +2137,98 @@ def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]
         cache_write is not None and cached + cache_write > values["input_tokens"]
     ):
         _fail("invalid_response")
-    for name in ("input_tokens", "output_tokens", "total_tokens"):
-        if type(_member(sdk, name)) is not int or _member(sdk, name) != values[name]:
-            _fail("invalid_response")
-    sdk_details = _member(sdk, "input_tokens_details")
-    if (
-        details is not None
-        and "cached_tokens" in details
-        and _member(sdk_details, "cached_tokens") != cached
-    ):
-        _fail("invalid_response")
-    if (
-        cache_write is not None
-        and _member(sdk_details, "cache_write_tokens") != cache_write
-    ):
-        _fail("invalid_response")
     return {
         "input_tokens": values["input_tokens"],
         "cached_input_tokens": cached,
         "cache_write_input_tokens": cache_write,
         "output_tokens": values["output_tokens"],
         "total_tokens": values["total_tokens"],
+    }
+
+
+def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]:
+    usage = _raw_usage(document)
+    raw = cast(Mapping[str, Any], document["usage"])
+    sdk = getattr(response, "usage", None)
+    if sdk is None:
+        _fail("invalid_response")
+    details = raw.get("input_tokens_details")
+    for name in ("input_tokens", "output_tokens", "total_tokens"):
+        if type(_member(sdk, name)) is not int or _member(sdk, name) != usage[name]:
+            _fail("invalid_response")
+    sdk_details = _member(sdk, "input_tokens_details")
+    sdk_cached = _member(sdk_details, "cached_tokens")
+    raw_cached_present = details is not None and "cached_tokens" in details
+    if raw_cached_present and sdk_cached != usage["cached_input_tokens"]:
+        _fail("invalid_response")
+    if not raw_cached_present and sdk_cached not in {None, 0}:
+        _fail("invalid_response")
+    sdk_cache_write = _member(sdk_details, "cache_write_tokens")
+    raw_cache_write_present = details is not None and "cache_write_tokens" in details
+    if raw_cache_write_present and sdk_cache_write != usage["cache_write_input_tokens"]:
+        _fail("invalid_response")
+    if not raw_cache_write_present and sdk_cache_write is not None:
+        _fail("invalid_response")
+    return usage
+
+
+def _load_raw_document(raw_bytes: bytes) -> Dict[str, Any]:
+    if (
+        type(raw_bytes) is not bytes
+        or not raw_bytes
+        or len(raw_bytes) > MAX_RAW_RESPONSE_BYTES
+    ):
+        _fail("malformed_response")
+
+    def exact_object(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    try:
+        document = json.loads(raw_bytes, object_pairs_hook=exact_object)
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        _fail("malformed_response")
+    if type(document) is not dict:
+        _fail("malformed_response")
+    return cast(Dict[str, Any], document)
+
+
+def _replay_raw_success(raw_bytes: bytes) -> Dict[str, Any]:
+    document = _load_raw_document(raw_bytes)
+    response_id = document.get("id")
+    if _safe_request_id(response_id) is None:
+        _fail("malformed_response")
+    if document.get("model") != PINNED_MODEL:
+        _fail("invalid_response")
+    if (
+        document.get("status") == "incomplete"
+        or document.get("incomplete_details") is not None
+    ):
+        _fail("invalid_response")
+    if document.get("status") != "completed":
+        _fail("invalid_response")
+    text = _raw_text(document)
+    try:
+        structured = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        _fail("invalid_response")
+    structured = validate_task12b_response(structured)
+    usage = _raw_usage(document)
+    if usage["output_tokens"] > 2048:
+        _fail("invalid_response")
+    actual, upper = usage_costs(usage)
+    return {
+        "response_id": response_id,
+        "observed_model": document["model"],
+        "structured_response": structured,
+        "usage": usage,
+        "actual_cost": actual,
+        "conservative_cost_upper_bound": upper,
+        "output_text": text,
     }
 
 
@@ -2157,9 +2297,7 @@ def dispatch_once(
         if len(content) > MAX_RAW_RESPONSE_BYTES:
             _fail("malformed_response")
         raw_bytes = content
-        document = json.loads(raw_bytes)
-        if type(document) is not dict:
-            _fail("malformed_response")
+        document = _load_raw_document(raw_bytes)
         response = raw.parse()
         response_id = getattr(response, "id", None)
         observed_model = getattr(response, "model", None)
@@ -2187,19 +2325,20 @@ def dispatch_once(
             _fail("invalid_response")
         if status != "completed" or document.get("status") != "completed":
             _fail("invalid_response")
-        text = _raw_text(document)
-        if getattr(response, "output_text", None) != text:
+        projection = _replay_raw_success(raw_bytes)
+        if getattr(response, "output_text", None) != projection["output_text"]:
             _fail("invalid_response")
-        try:
-            structured = json.loads(text)
-        except (TypeError, json.JSONDecodeError):
-            _fail("invalid_response")
-        structured = validate_task12b_response(structured)
         usage = validate_usage(document, response)
-        if usage["output_tokens"] > 2048:
+        if usage != projection["usage"]:
             _fail("invalid_response")
-        actual, upper = usage_costs(usage)
-        return TransportResult(raw_bytes, metadata, structured, usage, actual, upper)
+        return TransportResult(
+            raw_bytes,
+            metadata,
+            projection["structured_response"],
+            usage,
+            projection["actual_cost"],
+            projection["conservative_cost_upper_bound"],
+        )
     except ExecutionFailure as failure:
         failure.raw_bytes = raw_bytes
         failure.response_metadata = metadata
@@ -2312,6 +2451,7 @@ def execute_authorized_manifest(
     api_key: str,
     client_factory: Callable[[str], Any],
     now: str,
+    _clock: Optional[Callable[[], str]] = None,
 ) -> Dict[str, Any]:
     """Execute pending cells under verified authority; tests inject every dependency."""
     requests, visible_evidence = _validate_requests(repo_root)
@@ -2327,12 +2467,23 @@ def execute_authorized_manifest(
         now,
     )
     bounds = _projected_input_bounds(requests)
+    clock = _clock or (lambda: now)
     states: List[str] = []
     with machine_global_run_lock(global_root):
         for cell_id, request_hash in zip(EXECUTION_ORDER, REQUEST_HASHES):
-            states.append(
-                classify_state(global_root, local_root, cell_id, request_hash, context)
+            index = len(states)
+            state = classify_state(
+                global_root, local_root, cell_id, request_hash, context
             )
+            if state == "terminal":
+                verify_terminal(
+                    global_root,
+                    cell_id,
+                    request_hash,
+                    context,
+                    visible_evidence[index],
+                )
+            states.append(state)
         if "blocked_orphan_claim" in states:
             _fail("blocked_orphan_claim_no_network_attempt")
         pending = [index for index, state in enumerate(states) if state == "pending"]
@@ -2356,14 +2507,17 @@ def execute_authorized_manifest(
                 body = requests[index]
                 if _sha256_bytes(canonical_bytes(body)) != request_hash:
                     _fail()
+                claim_at = clock()
+                _require_live_authority(context, claim_at)
                 publish_authority_claim(
-                    global_root, local_root, cell_id, request_hash, context, now
+                    global_root, local_root, cell_id, request_hash, context, claim_at
                 )
                 dispatches += 1
                 dispatch_completed = False
                 try:
                     result = dispatch_once(client, body, request_hash)
                     dispatch_completed = True
+                    terminal_at = clock()
                     if api_key.encode("utf-8") in result.raw_bytes:
                         publish_terminal(
                             global_root,
@@ -2374,10 +2528,10 @@ def execute_authorized_manifest(
                             kind="failure",
                             dispatch_invoked=True,
                             server_acceptance="yes",
-                            provider_visible_evidence=None,
+                            provider_visible_evidence=visible_evidence[index],
                             structured_response=None,
                             raw_bytes=None,
-                            recorded_at=now,
+                            recorded_at=terminal_at,
                             failure_category="secret_detected",
                             usage=result.usage,
                             actual_cost=result.actual_cost,
@@ -2399,7 +2553,7 @@ def execute_authorized_manifest(
                             provider_visible_evidence=visible_evidence[index],
                             structured_response=None,
                             raw_bytes=result.raw_bytes,
-                            recorded_at=now,
+                            recorded_at=terminal_at,
                             failure_category="budget_bound_violation",
                             usage=result.usage,
                             actual_cost=result.actual_cost,
@@ -2419,7 +2573,7 @@ def execute_authorized_manifest(
                         provider_visible_evidence=visible_evidence[index],
                         structured_response=result.structured_response,
                         raw_bytes=result.raw_bytes,
-                        recorded_at=now,
+                        recorded_at=terminal_at,
                         usage=result.usage,
                         actual_cost=result.actual_cost,
                         conservative_cost_upper_bound=result.conservative_cost_upper_bound,
@@ -2436,6 +2590,7 @@ def execute_authorized_manifest(
                 except ExecutionFailure as failure:
                     if dispatch_completed:
                         raise
+                    terminal_at = clock()
                     raw_bytes = getattr(failure, "raw_bytes", None)
                     metadata = getattr(failure, "response_metadata", None)
                     if raw_bytes is not None and api_key.encode("utf-8") in raw_bytes:
@@ -2460,7 +2615,7 @@ def execute_authorized_manifest(
                         provider_visible_evidence=visible_evidence[index],
                         structured_response=None,
                         raw_bytes=raw_bytes,
-                        recorded_at=now,
+                        recorded_at=terminal_at,
                         failure_category=failure.category,
                         usage=usage,
                         actual_cost=actual_cost,
@@ -2536,7 +2691,8 @@ def main(
                 "task12b status=dry-run network_attempts=0 credential_readiness=not_checked"
             )
             return 0
-        now = _now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        clock = (lambda: cast(str, _now)) if _now is not None else _utc_now
+        now = clock()
         candidate_path = local_root / "authorization-candidate.json"
         approval_path = local_root / "owner-approval.json"
         mapping_path = local_root / "blind-mapping.json"
@@ -2586,6 +2742,7 @@ def main(
                     api_key=api_key,
                     client_factory=_client_factory,
                     now=now,
+                    _clock=clock,
                 )
             print(
                 "task12b status=%s dispatches=%d successes=%d failures=%d pending=%d"
