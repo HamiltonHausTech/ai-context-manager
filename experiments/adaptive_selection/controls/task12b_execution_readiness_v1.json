@@ -1,0 +1,99 @@
+{
+  "authorization": {
+    "approval_record_version": "task12b-owner-approval-v1",
+    "candidate_grants_network_authority": false,
+    "candidate_version": "task12b-authorization-candidate-v2",
+    "owner_approval_is_operational_process_evidence_not_cryptographic_proof_against_same_os_user": true,
+    "owner_approval_requires_exact_candidate_sha256_echoed_out_of_band": true,
+    "owner_approval_writer_provided_by_cli": false
+  },
+  "budget": {
+    "cap_semantics": "enforced projection/accepted-usage cap; not a guarantee against provider billing anomalies or unrelated activity",
+    "conservative_input_token_bound": 29192,
+    "conservative_output_token_bound": 18432,
+    "conservative_execution_ceiling": "0.294164",
+    "currency": "USD",
+    "historical_projection": {
+      "amount": "0.279568",
+      "semantics": "reproducibility-only; not a maximum or current execution ceiling"
+    },
+    "official_pricing_source_url": "https://developers.openai.com/api/docs/pricing",
+    "owner_cap": "1.00",
+    "pricing_frozen_on": "2026-08-04",
+    "short_context_rates_per_million": {
+      "cache_write_input": "2.50",
+      "cached_input": "0.20",
+      "input": "2.00",
+      "output": "12.00"
+    }
+  },
+  "contract": {
+    "path": "experiments/adaptive_selection/controls/task12b_context_calibration_v1.json",
+    "sha256": "sha256:0bf61722680aca83432f8f82d29b9d309673efbf2e750720682fa2ff4b7b16d1",
+    "version": "task12b-context-sensitivity-calibration-v1"
+  },
+  "contract_lineage": {
+    "identity": "task12b-context-sensitivity-calibration-v1@sha256:0bf61722680aca83432f8f82d29b9d309673efbf2e750720682fa2ff4b7b16d1",
+    "replacement_readiness_manifest_does_not_reset_cell_authority": true
+  },
+  "execution": {
+    "failure_policy": "one claim and at most one dispatch per contract-lineage cell; no retry, fallback, replacement, model substitution, tools, or adaptation",
+    "network_requests_authorized_by_manifest": 0,
+    "ordered_cells": [
+      {"cell_id": "cell-k4m2", "request_sha256": "sha256:07d3a42b2267a187ba1234b80c22bd221a355f9905df51235c1b03f3e226462e"},
+      {"cell_id": "cell-y9h4", "request_sha256": "sha256:a7b50fbffbbbaaa876852fe7f791b1568d1613a2919b3b3d136710d72be95c1d"},
+      {"cell_id": "cell-m8t3", "request_sha256": "sha256:e2643c1988e3e7acb3f6fbeedee33c59db76ce3a3fd0f4ff0791a3c466dc1e19"},
+      {"cell_id": "cell-v3x8", "request_sha256": "sha256:8f9e3584563e914d2110bd400bba9972c4a4e6419f86fc6897b3505dfc6bb91e"},
+      {"cell_id": "cell-b8n5", "request_sha256": "sha256:a9ff62775f3b7026d69167a72ac27339fa1730233caa72c67ad879bff39b15fe"},
+      {"cell_id": "cell-z5f7", "request_sha256": "sha256:490f667e064d0909bcef38cb7cf60e445eeceeec1a255ef462f5106c1336588b"},
+      {"cell_id": "cell-p7q9", "request_sha256": "sha256:7be7ff6a80d4cdde19ae34ff052d26b9697e4cda29cd8f381ab98131d2368b35"},
+      {"cell_id": "cell-r2d6", "request_sha256": "sha256:3b0f34553754aeb875c1cdf24d630ec5416e4ba84eee919f31d1c1673947fe8e"},
+      {"cell_id": "cell-c6w1", "request_sha256": "sha256:fed0326309b2a3522c05b1d5baee1b4d0bfed5f62211bbfc08eda6b311c8f8c4"}
+    ]
+  },
+  "filesystem_evidence": {
+    "description": "atomic no-overwrite cooperative evidence; not immutable against the same OS user",
+    "directory_mode": "0700",
+    "file_mode": "0600",
+    "machine_global_claims_and_terminals_authoritative": true,
+    "repository_local_records_are_non_authoritative_mirrors": true,
+    "require_nlink_one_owner_regular_file_and_no_symlink_ancestors": true
+  },
+  "paths": {
+    "canonical_private_local_root": ".local/adaptive-selection-task12b",
+    "canonical_private_machine_global_root_template": "~/.local/state/ai-context-manager/task12b-authority/<contract-lineage-sha256>",
+    "production_path_overrides_allowed": false
+  },
+  "protected_paths": [
+    ".hermes/plans/2026-08-04-task12b-execution-readiness.md",
+    "docs/research/task12b-context-sensitivity-calibration.md",
+    "docs/research/task12b-execution-readiness.md",
+    "experiments/adaptive_selection/context_sensitivity_calibration.py",
+    "experiments/adaptive_selection/context_sensitivity_execution.py",
+    "experiments/adaptive_selection/openai_manifest_probe.py",
+    "experiments/adaptive_selection/controls/task12b_context_calibration_v1.json",
+    "experiments/adaptive_selection/controls/task12b_execution_readiness_v1.json",
+    "tests/adaptive_selection/test_context_sensitivity_calibration.py",
+    "tests/adaptive_selection/test_context_sensitivity_execution.py"
+  ],
+  "provider_configuration": {
+    "httpx_version": "0.28.1",
+    "max_output_tokens": 2048,
+    "max_retries": 0,
+    "model": "gpt-5.6-terra",
+    "openai_version": "2.46.0",
+    "reasoning_effort": "medium",
+    "store": false,
+    "stream": false,
+    "timeout_seconds": 30.0,
+    "tools": []
+  },
+  "readiness_version": "task12b-execution-readiness-v2",
+  "state_machine": {
+    "claim_and_terminal": "terminal",
+    "claim_without_terminal": "block ordinary resume without mutation or dispatch",
+    "conflict_or_local_only_or_raw_only_or_terminal_without_claim_or_semantic_mismatch": "abort",
+    "no_claim_no_terminal": "pending",
+    "orphan_finalization": "separately owner-authorized offline action requiring exact claim digest and confirmation no process remains"
+  }
+}
