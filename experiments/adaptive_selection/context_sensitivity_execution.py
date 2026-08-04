@@ -1065,6 +1065,27 @@ def _valid_response_metadata(value: Any) -> bool:
     )
 
 
+def _valid_success_transport_metadata(value: Any) -> bool:
+    if not _valid_response_metadata(value):
+        return False
+    content_type = value["content_type"]
+    media_type = content_type.split(";", 1)[0].strip().lower() if content_type else ""
+    return bool(
+        value["http_status"] == 200
+        and media_type in {"application/json", "application/problem+json"}
+        and value["provider_request_id"] is not None
+        and value["response_id"] is not None
+        and value["provider_request_id"] != value["response_id"]
+    )
+
+
+def _valid_success_response_metadata(value: Any) -> bool:
+    return bool(
+        _valid_success_transport_metadata(value)
+        and value["observed_model"] == PINNED_MODEL
+    )
+
+
 def _valid_dispatch(value: Any) -> bool:
     return value is True or value is False or value == "unknown"
 
@@ -1344,8 +1365,7 @@ def verify_terminal(
             or terminal["failure_category"] is not None
             or terminal["usage"] is None
             or type(terminal["provider_visible_evidence"]) is not dict
-            or terminal["response_metadata"]["response_id"] is None
-            or terminal["response_metadata"]["observed_model"] != PINNED_MODEL
+            or not _valid_success_response_metadata(terminal["response_metadata"])
         ):
             _fail()
         raw_bytes = _read_private_bytes(_raw_path(global_root, cell_id))
@@ -2017,8 +2037,19 @@ def _raw_text(document: Mapping[str, Any]) -> str:
                 _fail("malformed_response")
             if "id" in item and _safe_request_id(item["id"]) is None:
                 _fail("malformed_response")
-            if "summary" in item and type(item["summary"]) is not list:
-                _fail("malformed_response")
+            if "summary" in item:
+                summary = item["summary"]
+                if type(summary) is not list:
+                    _fail("malformed_response")
+                for entry in summary:
+                    if (
+                        type(entry) is not dict
+                        or set(entry) != {"type", "text"}
+                        or entry["type"] != "summary_text"
+                        or type(entry["text"]) is not str
+                        or len(entry["text"]) > MAX_RAW_RESPONSE_BYTES
+                    ):
+                        _fail("malformed_response")
             if "encrypted_content" in item and not (
                 item["encrypted_content"] is None
                 or type(item["encrypted_content"]) is str
@@ -2047,11 +2078,9 @@ def _raw_text(document: Mapping[str, Any]) -> str:
         _fail("provider_refusal")
     if not set(content[0]).issubset({"type", "text", "annotations", "logprobs"}):
         _fail("malformed_response")
-    if "annotations" in content[0] and type(content[0]["annotations"]) is not list:
+    if "annotations" in content[0] and content[0]["annotations"] != []:
         _fail("malformed_response")
-    if "logprobs" in content[0] and not (
-        content[0]["logprobs"] is None or type(content[0]["logprobs"]) is list
-    ):
+    if "logprobs" in content[0] and content[0]["logprobs"] not in (None, []):
         _fail("malformed_response")
     if (
         content[0].get("type") != "output_text"
@@ -2172,6 +2201,15 @@ def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]
     return usage
 
 
+def _exact_json_object(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
 def _load_raw_document(raw_bytes: bytes) -> Dict[str, Any]:
     if (
         type(raw_bytes) is not bytes
@@ -2180,16 +2218,8 @@ def _load_raw_document(raw_bytes: bytes) -> Dict[str, Any]:
     ):
         _fail("malformed_response")
 
-    def exact_object(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
-        result: Dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError("duplicate JSON key")
-            result[key] = value
-        return result
-
     try:
-        document = json.loads(raw_bytes, object_pairs_hook=exact_object)
+        document = json.loads(raw_bytes, object_pairs_hook=_exact_json_object)
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
         _fail("malformed_response")
     if type(document) is not dict:
@@ -2213,8 +2243,8 @@ def _replay_raw_success(raw_bytes: bytes) -> Dict[str, Any]:
         _fail("invalid_response")
     text = _raw_text(document)
     try:
-        structured = json.loads(text)
-    except (TypeError, json.JSONDecodeError):
+        structured = json.loads(text, object_pairs_hook=_exact_json_object)
+    except (TypeError, ValueError, json.JSONDecodeError):
         _fail("invalid_response")
     structured = validate_task12b_response(structured)
     usage = _raw_usage(document)
@@ -2304,12 +2334,9 @@ def dispatch_once(
         metadata = _response_metadata(
             raw, response_id=response_id, observed_model=observed_model
         )
-        if metadata is None or metadata["provider_request_id"] is None:
-            _fail("malformed_response")
         if (
-            metadata["http_status"] != 200
-            or _safe_request_id(response_id) is None
-            or response_id == metadata["provider_request_id"]
+            metadata is None
+            or not _valid_success_transport_metadata(metadata)
             or document.get("id") != response_id
         ):
             _fail("malformed_response")
@@ -2467,7 +2494,7 @@ def execute_authorized_manifest(
         now,
     )
     bounds = _projected_input_bounds(requests)
-    clock = _clock or (lambda: now)
+    clock = _clock or _utc_now
     states: List[str] = []
     with machine_global_run_lock(global_root):
         for cell_id, request_hash in zip(EXECUTION_ORDER, REQUEST_HASHES):

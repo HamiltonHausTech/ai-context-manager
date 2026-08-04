@@ -97,6 +97,13 @@ def success_raw(index=0, structured=None, usage=None, output_items=None):
     return json.dumps(document, separators=(",", ":")).encode()
 
 
+def duplicate_structured_text():
+    return (
+        '{"diagnosis":"FIRST",'
+        + json.dumps(VALID_STRUCTURED, separators=(",", ":"))[1:]
+    )
+
+
 def private_root(tmp_path, name):
     root = tmp_path / name
     root.mkdir(mode=0o700, parents=True)
@@ -918,6 +925,10 @@ def test_rehashed_terminal_schema_tampering_is_rejected(tmp_path):
             structured_response={"diagnosis": "incomplete"}
         ),
         lambda terminal: terminal["response_metadata"].update(observed_model="other"),
+        lambda terminal: terminal["response_metadata"].update(http_status=500),
+        lambda terminal: terminal["response_metadata"].update(
+            content_type="text/plain"
+        ),
         lambda terminal: terminal.update(conservative_cost_upper_bound="0.999"),
     ],
 )
@@ -962,7 +973,13 @@ def test_rehashed_success_evidence_and_cost_tampering_is_rejected(tmp_path, muta
 
 @pytest.mark.parametrize(
     "raw_mutation",
-    ["non_json", "failed_status", "altered_structure", "altered_usage"],
+    [
+        "non_json",
+        "failed_status",
+        "altered_structure",
+        "altered_usage",
+        "duplicate_structured",
+    ],
 )
 def test_rehashed_raw_semantic_tampering_is_rejected(tmp_path, raw_mutation):
     local, global_root, _, _, _, candidate, approval = prepare(tmp_path)
@@ -1002,9 +1019,11 @@ def test_rehashed_raw_semantic_tampering_is_rejected(tmp_path, raw_mutation):
             document["output"][0]["content"][0]["text"] = json.dumps(
                 altered, separators=(",", ":")
             )
-        else:
+        elif raw_mutation == "altered_usage":
             document["usage"]["input_tokens"] = 11
             document["usage"]["total_tokens"] = 14
+        else:
+            document["output"][0]["content"][0]["text"] = duplicate_structured_text()
         changed = json.dumps(document, separators=(",", ":")).encode()
     raw_path = global_root / "raw" / f"{cell_id}.raw"
     raw_path.unlink()
@@ -1268,6 +1287,7 @@ def test_secret_canary_omits_unsafe_raw_but_keeps_exact_request_evidence(
         api_key=api_key,
         client_factory=lambda _: client,
         now=NOW,
+        _clock=lambda: NOW,
     )
     assert result == {
         "status": "run_incomplete",
@@ -1408,6 +1428,24 @@ def test_dispatch_once_preserves_exact_body_schema_usage_and_cost():
     }
 
 
+def test_dispatch_rejects_duplicate_keys_inside_structured_output():
+    requests, _ = execution._validate_requests(ROOT)
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    text = duplicate_structured_text()
+    document["output"][0]["content"][0]["text"] = text
+    response.output_text = text
+    changed = json.dumps(document, separators=(",", ":")).encode()
+    with pytest.raises(execution.ExecutionFailure) as caught:
+        execution.dispatch_once(
+            SequenceClient([TransportRaw(changed, response)]),
+            requests[0],
+            REQUEST_HASHES[0],
+        )
+    assert caught.value.category == "invalid_response"
+    assert caught.value.raw_bytes == changed
+
+
 def test_absent_cache_write_is_unknown_not_zero_and_upper_still_exact():
     raw, response = transport_pair()
     document = json.loads(raw)
@@ -1450,6 +1488,16 @@ def test_raw_and_sdk_usage_detail_presence_contradictions_are_rejected(
         {"type": "reasoning", "action": "tool"},
         {"type": "reasoning", "arguments": {"secret": "x"}},
         {"type": "reasoning", "unknown": "unmodeled"},
+        {
+            "type": "reasoning",
+            "summary": [
+                {
+                    "type": "summary_text",
+                    "text": "inert text",
+                    "tool_call": {"name": "exfiltrate"},
+                }
+            ],
+        },
     ],
 )
 def test_reasoning_items_reject_every_unmodeled_or_action_field(reasoning_item):
@@ -1457,6 +1505,63 @@ def test_reasoning_items_reject_every_unmodeled_or_action_field(reasoning_item):
     document = json.loads(raw)
     document["output"].insert(0, reasoning_item)
     response.output_text = document["output"][1]["content"][0]["text"]
+    with pytest.raises(execution.ExecutionFailure) as caught:
+        execution.dispatch_once(
+            SequenceClient(
+                [
+                    TransportRaw(
+                        json.dumps(document, separators=(",", ":")).encode(),
+                        response,
+                    )
+                ]
+            ),
+            execution._validate_requests(ROOT)[0][0],
+            REQUEST_HASHES[0],
+        )
+    assert caught.value.category == "malformed_response"
+
+
+def test_exact_reasoning_summary_and_empty_output_metadata_are_accepted():
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["output"].insert(
+        0,
+        {
+            "type": "reasoning",
+            "id": "rs_valid",
+            "summary": [{"type": "summary_text", "text": "bounded summary"}],
+            "status": "completed",
+        },
+    )
+    content = document["output"][1]["content"][0]
+    content["annotations"] = []
+    content["logprobs"] = []
+    response.output_text = content["text"]
+    result = execution.dispatch_once(
+        SequenceClient(
+            [
+                TransportRaw(
+                    json.dumps(document, separators=(",", ":")).encode(), response
+                )
+            ]
+        ),
+        execution._validate_requests(ROOT)[0][0],
+        REQUEST_HASHES[0],
+    )
+    assert result.structured_response == VALID_STRUCTURED
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        {"type": "tool_call", "action": "exfiltrate"},
+        {"type": "url_citation", "url": "https://unexpected.invalid"},
+    ],
+)
+def test_unrequested_output_annotations_are_rejected(annotation):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["output"][0]["content"][0]["annotations"] = [annotation]
     with pytest.raises(execution.ExecutionFailure) as caught:
         execution.dispatch_once(
             SequenceClient(
@@ -1588,20 +1693,41 @@ def test_real_sdk_mocktransport_success_is_one_stateless_literal_post():
     assert len(seen) == 1
 
 
-def test_real_sdk_mocktransport_rejects_action_like_reasoning_item_once():
+@pytest.mark.parametrize("container", ["top_level", "nested_summary", "annotation"])
+def test_real_sdk_mocktransport_rejects_action_like_output_once(container):
     import httpx
 
     requests, _ = execution._validate_requests(ROOT)
     document = sdk_response_document()
-    document["output"].insert(
-        0,
-        {
-            "type": "reasoning",
-            "id": "rs_untrusted",
-            "summary": [],
-            "tool_call": {"name": "unmodeled_action"},
-        },
-    )
+    if container == "top_level":
+        document["output"].insert(
+            0,
+            {
+                "type": "reasoning",
+                "id": "rs_untrusted",
+                "summary": [],
+                "tool_call": {"name": "unmodeled_action"},
+            },
+        )
+    elif container == "nested_summary":
+        document["output"].insert(
+            0,
+            {
+                "type": "reasoning",
+                "id": "rs_untrusted",
+                "summary": [
+                    {
+                        "type": "summary_text",
+                        "text": "inert",
+                        "tool_call": {"name": "unmodeled_action"},
+                    }
+                ],
+            },
+        )
+    else:
+        document["output"][0]["content"][0]["annotations"] = [
+            {"type": "tool_call", "action": "unmodeled_action"}
+        ]
     seen = []
 
     def handler(request):
@@ -1619,6 +1745,33 @@ def test_real_sdk_mocktransport_rejects_action_like_reasoning_item_once():
     finally:
         client.close()
     assert caught.value.category == "malformed_response"
+    assert caught.value.raw_bytes is not None
+    assert len(seen) == 1
+
+
+def test_real_sdk_mocktransport_rejects_duplicate_structured_keys_once():
+    import httpx
+
+    requests, _ = execution._validate_requests(ROOT)
+    document = sdk_response_document()
+    document["output"][0]["content"][0]["text"] = duplicate_structured_text()
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json", "x-request-id": "req_sdk_dup"},
+            json=document,
+        )
+
+    client = sdk_client(handler)
+    try:
+        with pytest.raises(execution.ExecutionFailure) as caught:
+            execution.dispatch_once(client, requests[0], REQUEST_HASHES[0])
+    finally:
+        client.close()
+    assert caught.value.category == "invalid_response"
     assert caught.value.raw_bytes is not None
     assert len(seen) == 1
 
@@ -1960,6 +2113,7 @@ def test_fake_client_nine_successes_claim_before_exact_stateless_dispatch_and_cl
         api_key="sk-test-placeholder-not-a-real-key",
         client_factory=lambda _: client,
         now=NOW,
+        _clock=lambda: NOW,
     )
     assert result == {
         "status": "run_complete",
@@ -2046,6 +2200,7 @@ def test_fake_client_provider_failure_continues_then_all_terminal_resume_builds_
         api_key="sk-test-placeholder-not-a-real-key",
         client_factory=lambda _: client,
         now=NOW,
+        _clock=lambda: NOW,
     )
     assert first["dispatches"] == 9
     assert len(client.calls) == 9
@@ -2065,6 +2220,7 @@ def test_fake_client_provider_failure_continues_then_all_terminal_resume_builds_
         api_key="sk-test-placeholder-not-a-real-key",
         client_factory=lambda _: factories.append(True),
         now=NOW,
+        _clock=lambda: NOW,
     )
     assert resumed == {
         "status": "all_terminal",
@@ -2116,6 +2272,7 @@ def test_fake_client_budget_input_bound_is_terminal_and_stops_later_dispatch(
         api_key="sk-test-placeholder-not-a-real-key",
         client_factory=lambda _: client,
         now=NOW,
+        _clock=lambda: NOW,
     )
     assert result["dispatches"] == 1
     assert len(client.calls) == 1
@@ -2156,6 +2313,7 @@ def test_fake_client_local_claim_failure_consumes_authority_and_dispatches_zero(
             api_key="sk-test-placeholder-not-a-real-key",
             client_factory=lambda _: client,
             now=NOW,
+            _clock=lambda: NOW,
         )
     assert client.calls == []
     assert client.closed is True
@@ -2202,6 +2360,7 @@ def test_execute_evidence_publication_failure_escapes_without_second_terminal_or
             api_key="«redacted:sk-…»",
             client_factory=lambda _: client,
             now=NOW,
+            _clock=lambda: NOW,
         )
     assert len(client.calls) == 1
     assert publications == [EXECUTION_ORDER[0]]
@@ -2233,6 +2392,7 @@ def test_connection_failure_gets_static_dispatch_upper_and_resume_counts_it(
         api_key="«redacted:sk-…»",
         client_factory=lambda _: client,
         now=NOW,
+        _clock=lambda: NOW,
     )
     context = authority_context(candidate, approval)
     terminal = execution.verify_terminal(
