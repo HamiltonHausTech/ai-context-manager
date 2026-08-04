@@ -1451,6 +1451,7 @@ def test_absent_cache_write_is_unknown_not_zero_and_upper_still_exact():
     document = json.loads(raw)
     document["usage"]["input_tokens_details"].pop("cache_write_tokens")
     response.usage.input_tokens_details.cache_write_tokens = None
+    response.usage.input_tokens_details.model_fields_set = {"cached_tokens"}
     usage = execution.validate_usage(document, response)
     actual, upper = execution.usage_costs(usage)
     assert usage["cache_write_input_tokens"] is None
@@ -1462,6 +1463,9 @@ def test_absent_cache_write_is_unknown_not_zero_and_upper_still_exact():
     ("raw_detail", "sdk_cached", "sdk_cache_write"),
     [
         (None, 99, None),
+        (None, 0, None),
+        ({}, 0, None),
+        ({"cached_tokens": 10}, 10, None),
         ({"cached_tokens": 10}, 10, 0),
     ],
 )
@@ -1690,6 +1694,39 @@ def test_real_sdk_mocktransport_success_is_one_stateless_literal_post():
     finally:
         client.close()
     assert result.structured_response == VALID_STRUCTURED
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize("variant", ["details_absent", "cache_write_absent"])
+def test_real_sdk_preserves_cache_detail_field_absence(variant):
+    import httpx
+
+    requests, _ = execution._validate_requests(ROOT)
+    document = sdk_response_document()
+    if variant == "details_absent":
+        document["usage"].pop("input_tokens_details")
+    else:
+        document["usage"]["input_tokens_details"].pop("cache_write_tokens")
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/json",
+                "x-request-id": "req_sdk_presence",
+            },
+            json=document,
+        )
+
+    client = sdk_client(handler)
+    try:
+        result = execution.dispatch_once(client, requests[0], REQUEST_HASHES[0])
+    finally:
+        client.close()
+    assert result.usage["cached_input_tokens"] in {0, 10}
+    assert result.usage["cache_write_input_tokens"] is None
     assert len(seen) == 1
 
 

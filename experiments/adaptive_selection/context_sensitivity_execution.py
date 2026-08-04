@@ -2175,29 +2175,49 @@ def _raw_usage(document: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _member_presence(value: Any, name: str) -> Tuple[bool, Any]:
+    if isinstance(value, Mapping):
+        return name in value, value.get(name)
+    if value is None:
+        return False, None
+    fields_set = getattr(value, "model_fields_set", None)
+    if not isinstance(fields_set, (set, frozenset)):
+        fields_set = getattr(value, "__fields_set__", None)
+    if isinstance(fields_set, (set, frozenset)):
+        return name in fields_set, getattr(value, name, None)
+    return hasattr(value, name), getattr(value, name, None)
+
+
 def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]:
     usage = _raw_usage(document)
     raw = cast(Mapping[str, Any], document["usage"])
     sdk = getattr(response, "usage", None)
     if sdk is None:
         _fail("invalid_response")
-    details = raw.get("input_tokens_details")
     for name in ("input_tokens", "output_tokens", "total_tokens"):
         if type(_member(sdk, name)) is not int or _member(sdk, name) != usage[name]:
             _fail("invalid_response")
-    sdk_details = _member(sdk, "input_tokens_details")
-    sdk_cached = _member(sdk_details, "cached_tokens")
-    raw_cached_present = details is not None and "cached_tokens" in details
-    if raw_cached_present and sdk_cached != usage["cached_input_tokens"]:
+    raw_details_present = "input_tokens_details" in raw
+    sdk_details_present, sdk_details = _member_presence(sdk, "input_tokens_details")
+    if raw_details_present != sdk_details_present:
         _fail("invalid_response")
-    if not raw_cached_present and sdk_cached not in {None, 0}:
+    details = raw.get("input_tokens_details")
+    if details is None:
+        if raw_details_present and sdk_details is not None:
+            _fail("invalid_response")
+        return usage
+    if sdk_details is None:
         _fail("invalid_response")
-    sdk_cache_write = _member(sdk_details, "cache_write_tokens")
-    raw_cache_write_present = details is not None and "cache_write_tokens" in details
-    if raw_cache_write_present and sdk_cache_write != usage["cache_write_input_tokens"]:
-        _fail("invalid_response")
-    if not raw_cache_write_present and sdk_cache_write is not None:
-        _fail("invalid_response")
+    for raw_name, sdk_name, projected_name in (
+        ("cached_tokens", "cached_tokens", "cached_input_tokens"),
+        ("cache_write_tokens", "cache_write_tokens", "cache_write_input_tokens"),
+    ):
+        raw_present = raw_name in details
+        sdk_present, sdk_value = _member_presence(sdk_details, sdk_name)
+        if raw_present != sdk_present:
+            _fail("invalid_response")
+        if raw_present and sdk_value != usage[projected_name]:
+            _fail("invalid_response")
     return usage
 
 
