@@ -51,6 +51,8 @@ from typing import (
     cast,
 )
 
+from pydantic import BaseModel
+
 from .context_sensitivity_calibration import (
     CONTRACT_PATH,
     EXECUTION_ORDER,
@@ -2180,10 +2182,8 @@ def _member_presence(value: Any, name: str) -> Tuple[bool, Any]:
         return name in value, value.get(name)
     if value is None:
         return False, None
-    fields_set = getattr(value, "model_fields_set", None)
-    if not isinstance(fields_set, (set, frozenset)):
-        fields_set = getattr(value, "__fields_set__", None)
-    if isinstance(fields_set, (set, frozenset)):
+    if isinstance(value, BaseModel):
+        fields_set = value.model_fields_set
         return name in fields_set, getattr(value, name, None)
     return hasattr(value, name), getattr(value, name, None)
 
@@ -2216,7 +2216,9 @@ def validate_usage(document: Mapping[str, Any], response: Any) -> Dict[str, Any]
         sdk_present, sdk_value = _member_presence(sdk_details, sdk_name)
         if raw_present != sdk_present:
             _fail("invalid_response")
-        if raw_present and sdk_value != usage[projected_name]:
+        if raw_present and (
+            type(sdk_value) is not int or sdk_value != usage[projected_name]
+        ):
             _fail("invalid_response")
     return usage
 

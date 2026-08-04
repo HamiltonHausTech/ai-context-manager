@@ -1450,8 +1450,8 @@ def test_absent_cache_write_is_unknown_not_zero_and_upper_still_exact():
     raw, response = transport_pair()
     document = json.loads(raw)
     document["usage"]["input_tokens_details"].pop("cache_write_tokens")
-    response.usage.input_tokens_details.cache_write_tokens = None
-    response.usage.input_tokens_details.model_fields_set = {"cached_tokens"}
+    details = response.usage.input_tokens_details
+    del details.cache_write_tokens
     usage = execution.validate_usage(document, response)
     actual, upper = execution.usage_costs(usage)
     assert usage["cache_write_input_tokens"] is None
@@ -1481,6 +1481,34 @@ def test_raw_and_sdk_usage_detail_presence_contradictions_are_rejected(
     response.usage.input_tokens_details = SimpleNamespace(
         cached_tokens=sdk_cached, cache_write_tokens=sdk_cache_write
     )
+    with pytest.raises(execution.ExecutionFailure):
+        execution.validate_usage(document, response)
+
+
+@pytest.mark.parametrize("field_set_name", ["model_fields_set", "__fields_set__"])
+def test_fallback_objects_cannot_lie_about_usage_field_presence(field_set_name):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["usage"]["input_tokens_details"] = {}
+    details = SimpleNamespace(cached_tokens=999, cache_write_tokens=999)
+    setattr(details, field_set_name, set())
+    response.usage.input_tokens_details = details
+    with pytest.raises(execution.ExecutionFailure):
+        execution.validate_usage(document, response)
+
+
+class EqualToAnyInteger:
+    def __eq__(self, other):
+        return True
+
+
+@pytest.mark.parametrize("field", ["cached_tokens", "cache_write_tokens"])
+@pytest.mark.parametrize("sdk_value", [False, EqualToAnyInteger()])
+def test_sdk_usage_cache_values_require_exact_integer_type(field, sdk_value):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["usage"]["input_tokens_details"] = {field: 0}
+    response.usage.input_tokens_details = {field: sdk_value}
     with pytest.raises(execution.ExecutionFailure):
         execution.validate_usage(document, response)
 
