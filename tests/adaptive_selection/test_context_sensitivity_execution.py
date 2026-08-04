@@ -1758,6 +1758,34 @@ def test_real_sdk_preserves_cache_detail_field_absence(variant):
     assert len(seen) == 1
 
 
+def test_real_sdk_rejects_explicit_null_nested_cache_count_once():
+    import httpx
+
+    requests, _ = execution._validate_requests(ROOT)
+    document = sdk_response_document()
+    document["usage"]["input_tokens_details"]["cache_write_tokens"] = None
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/json",
+                "x-request-id": "req_sdk_null_cache_write",
+            },
+            json=document,
+        )
+
+    client = sdk_client(handler)
+    try:
+        with pytest.raises(execution.ExecutionFailure):
+            execution.dispatch_once(client, requests[0], REQUEST_HASHES[0])
+    finally:
+        client.close()
+    assert len(seen) == 1
+
+
 @pytest.mark.parametrize("container", ["top_level", "nested_summary", "annotation"])
 def test_real_sdk_mocktransport_rejects_action_like_output_once(container):
     import httpx
@@ -2074,6 +2102,37 @@ def test_default_cli_never_reads_credential_writes_private_or_imports_sdk(
     output = capsys.readouterr().out
     assert "Task:" not in output and "Evidence:" not in output
     assert "network_attempts=0" in output
+
+
+def test_cli_candidate_rounds_fractional_window_up_without_exceeding_expiry(
+    tmp_path, capsys, monkeypatch
+):
+    local = tmp_path / "local"
+    monkeypatch.setattr(execution, "repository_preflight", lambda *_: "a" * 40)
+    assert (
+        execution.main(
+            [
+                "--prepare-authorization-candidate",
+                "--owner-identity",
+                "repository-owner",
+                "--expires-at",
+                "2026-08-04T13:00:00.000000Z",
+            ],
+            _repo_root=ROOT,
+            _local_root=local,
+            _global_root=tmp_path / "global",
+            _api_key="test-only-placeholder-key",
+            _now="2026-08-04T12:00:00.500000Z",
+        )
+        == 0
+    )
+    candidate = execution.read_private_record(local / "authorization-candidate.json")[
+        "candidate"
+    ]
+    assert candidate["issued_at"] == "2026-08-04T12:00:00.500000Z"
+    assert candidate["expires_at"] == "2026-08-04T13:00:00.000000Z"
+    assert candidate["maximum_execution_window_seconds"] == 3600
+    assert "network_authority=0" in capsys.readouterr().out
 
 
 def test_argparse_exposes_no_production_path_override(capsys):

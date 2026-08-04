@@ -22,6 +22,7 @@ import hashlib
 import importlib
 import json
 import logging
+import math
 import os
 import pwd
 import re
@@ -2759,7 +2760,7 @@ def main(
                 _fail()
             issued = _parse_time(now)
             expires = _parse_time(args.expires_at)
-            window = int((expires - issued).total_seconds())
+            window = math.ceil((expires - issued).total_seconds())
             candidate = prepare_non_authorizing_candidate(
                 candidate_path,
                 mapping_path,
