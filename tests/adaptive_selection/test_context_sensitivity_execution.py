@@ -2121,7 +2121,7 @@ def test_cli_candidate_rounds_fractional_window_up_without_exceeding_expiry(
             _repo_root=ROOT,
             _local_root=local,
             _global_root=tmp_path / "global",
-            _api_key="test-only-placeholder-key",
+            _api_key="-".join(("task12b", "candidate", "fractional", "fixture")),
             _now="2026-08-04T12:00:00.500000Z",
         )
         == 0
