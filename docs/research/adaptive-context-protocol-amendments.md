@@ -57,3 +57,27 @@ The probe cannot establish model quality, context sensitivity, adaptive efficacy
 ### Outcome access declaration
 
 At this amendment's freeze, no Terra API request had been made for this project, no hosted-model result existed, and no bridge corpus had been authored or sealed. The probe prompt contains no DevOps task, selector condition, feedback, labels, required-context set, answer key, or held-out material.
+
+## 2026-08-03 — Prospective Task 12b context-sensitivity calibration review candidate
+
+- **Accountable author:** Andrew (Drew) Hamilton, project owner
+- **Drafting and implementation support:** Hermes Agent
+- **Status:** prospective offline review candidate; no execution authority
+- **Timing:** drafted after the one authorized Task 12a configuration probe succeeded, but before any Task 12b provider request or response
+- **Related design:** [Task 12b Context-Sensitivity Calibration Review Candidate](task12b-context-sensitivity-calibration.md)
+- **Canonical contract:** [`task12b_context_calibration_v1.json`](../../experiments/adaptive_selection/controls/task12b_context_calibration_v1.json)
+- **Effect on protocol 1.1-draft:** none. Confirmatory execution remains prohibited.
+
+### Scope and prospective controls
+
+Task 12b proposes nine development-only cells: correct, withheld, and stale context for each of three real-incident families. Cells use opaque client-side IDs and a fixed interleaved order. Provider requests would contain only fixed instructions, a task, numbered timestamped sanitized primary-evidence content, frozen Terra controls, and a bounded strict response schema. Cell IDs, condition labels, source roles, evidence IDs, evidence-level provenance, rubrics, decision rules, execution order, private identifier patterns, and predeclared conclusion phrases are excluded from provider-visible rendering.
+
+Condition-blind human annotation would precede deterministic scoring. The frozen status mapping is `met=1.0`, `partially_met=0.5`, and all other statuses `0.0`; condition-specific anchors prospectively define high-credit behavior for correct, withheld, and stale cells. The offline scorer validates one opaque annotation per cell, applies criterion weights and the critical-finding cap, computes both per-family deltas, and derives the verdict mechanically. Continuation requires correct context to exceed both withheld and stale context by `0.20` in at least two families with no critical finding in any correct-context response. One passing family narrows any later bridge to that family; no passing family, merely cosmetic differences, ineffective stale context, any correct-context critical finding, or post-hoc scoring interpretation stops or permits at most one redesign.
+
+This nine-call calibration is a descriptive investment screen, not a statistical falsification test. Its primary outcome is condition-independent actionable incident-resolution utility: calibrated uncertainty can earn safety and uncertainty credit, but cannot earn resolution or remediation credit for matters left unresolved. The estimand is the total effect of each frozen selector-style packet, including evidence quantity and detail; it does not isolate recency or decisive content from packet size. One unseeded response per cell cannot distinguish generation variance from context insensitivity; the result governs only whether these three cases justify investing in a larger bridge and cannot establish transfer, population performance, production safety, or adaptive efficacy.
+
+The contract authorizes zero network requests. Future execution would require an exact contract freeze, independent scientific and security review, explicit owner approval, and pricing re-verification. Even then, the prospective policy is one attempt per cell with no retry, fallback, replacement, or premium-model rescue. The offline implementation only validates, renders in memory, hashes, and applies a conservative USD `1.00` projection cap; its CLI has no live mode.
+
+### Outcome access declaration
+
+At this amendment's drafting, Task 12a had established only endpoint/configuration compatibility. No Task 12b cell had been sent to a provider, and no Task 12b response, comparative score, condition effect, or calibration outcome existed or had been accessed. The design therefore cannot have been selected in response to Task 12b outcomes.
