@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Task 12b is an **offline review candidate with no execution authority**. Its canonical contract is [`task12b_context_calibration_v1.json`](../../experiments/adaptive_selection/controls/task12b_context_calibration_v1.json). The validator and renderer can inspect that contract, construct canonical request bodies in memory, and emit hashes and conservative budget projections. They cannot contact OpenAI or any other provider, and the CLI has no live mode.
+Task 12b's canonical calibration contract remains an **offline frozen preparation with no execution authority**. Its canonical contract is [`task12b_context_calibration_v1.json`](../../experiments/adaptive_selection/controls/task12b_context_calibration_v1.json). The validator and renderer can inspect that contract, construct canonical request bodies in memory, and emit hashes and conservative budget projections. They cannot contact OpenAI or any other provider, and that calibration CLI has no live mode. A separate [execution-readiness protocol](task12b-execution-readiness.md) is reviewable independently and also grants zero authority until a later exact owner-approval gate.
 
 A later, separately approved calibration is only a descriptive investment screen: it could show whether each total frozen current-evidence packet changes one Terra response enough to improve actionable incident-resolution utility in three real-incident replays. The estimand includes packet evidence quantity and detail; it does not isolate recency or decisive content from packet size. Because there is one unseeded response per cell, a null or adverse result cannot distinguish generation variance from context insensitivity and cannot statistically falsify context sensitivity. The gate governs whether these selector-style packets justify investing in the larger bridge; it does not establish adaptive efficacy, transfer, population performance, production safety, or economic value. It is not part of the parent protocol's confirmatory experiment.
 
@@ -67,17 +67,18 @@ The contract authorizes **zero network requests**. Any future execution requires
 
 1. exact contract freeze;
 2. independent scientific and security review;
-3. explicit owner approval;
-4. re-verification of pricing; and
-5. a wholly separate execution mechanism and authority record.
+3. readiness implementation merge and exact-candidate review;
+4. explicit owner approval of one nonce-bearing authorization-candidate SHA-256;
+5. re-verification of pricing; and
+6. a wholly separate execution mechanism and authority record.
 
-The future policy is one attempt per cell with no SDK retry, fallback, replacement, or premium-model rescue. The offline module intentionally imports neither `openai` nor `httpx`, contains no network or execution function, and offers no live CLI option.
+The future policy is one attempt per cell with no SDK retry, fallback, replacement, or premium-model rescue. The frozen calibration module intentionally imports neither `openai` nor `httpx`, contains no network or execution function, and offers no live CLI option. The separate readiness runner must consume that module's unchanged rendered bytes and remain dry-run-only by default.
 
 ## Offline renderer and budget guard
 
 For each cell, the renderer deep-copies the frozen request template and inserts the fixed instructions plus `Task:` and numbered timestamped evidence content. Canonical JSON uses sorted keys, compact separators, UTF-8, and non-ASCII preservation. The response schema cites supporting evidence by number, limits free text to printable ASCII, and caps the maximum schema-valid free text below the 2,048-token output allowance.
 
-The conservative projection treats every canonical request UTF-8 byte as one input token, adds 1,024 input tokens of overhead per cell, and reserves 2,048 output tokens per cell. It applies the provisional frozen input/output rates with decimal arithmetic and rejects totals above USD `1.00`. The default CLI emits only:
+The preparation projection treats every canonical request UTF-8 byte as one input token, adds 1,024 input tokens of overhead per cell, and reserves 2,048 output tokens per cell. Its historical ordinary-input projection is reproducibility context, not the current execution maximum. The separate readiness protocol reverified GPT-5.6 pricing on 2026-08-04 and freezes a cache-write-aware conservative ceiling of USD `0.294164`, still below the USD `1.00` owner cap. The calibration CLI emits only:
 
 - the raw contract SHA-256;
 - per-cell request SHA-256, UTF-8 byte count, projected input/output tokens, and projected maximum cost; and
