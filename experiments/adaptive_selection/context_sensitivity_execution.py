@@ -2035,10 +2035,14 @@ def _raw_text(document: Mapping[str, Any]) -> str:
             _fail("malformed_response")
         if item.get("type") == "reasoning":
             if not set(item).issubset(
-                {"id", "type", "summary", "encrypted_content", "status"}
+                {"id", "type", "summary", "encrypted_content", "content", "status"}
             ):
                 _fail("malformed_response")
             if "id" in item and _safe_request_id(item["id"]) is None:
+                _fail("malformed_response")
+            if "content" in item and (
+                type(item["content"]) is not list or item["content"]
+            ):
                 _fail("malformed_response")
             if "summary" in item:
                 summary = item["summary"]

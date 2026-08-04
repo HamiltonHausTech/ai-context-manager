@@ -6,6 +6,10 @@ This document describes a **review candidate with zero current execution authori
 
 No CI, test, dry-run, candidate-preparation, export, or recovery command may send a provider request.
 
+## Parser remediation scope
+
+The previously consumed run remains preserved as invalid evidence and receives no retry, replacement, replay, or retroactive reclassification. Its terminal records and private raw evidence are unchanged. The parser remediation is prospective only: future responses may accept the pinned SDK's optional reasoning-item `content` field only when its raw JSON value is exactly an empty list. Nonempty lists and every other value remain malformed, and all recursive allowlists and no-action checks remain in force. This change grants no execution authority.
+
 ## Separation of gates
 
 Task 12b has six distinct gates:

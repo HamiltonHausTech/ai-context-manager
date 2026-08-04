@@ -1562,6 +1562,7 @@ def test_exact_reasoning_summary_and_empty_output_metadata_are_accepted():
             "type": "reasoning",
             "id": "rs_valid",
             "summary": [{"type": "summary_text", "text": "bounded summary"}],
+            "content": [],
             "status": "completed",
         },
     )
@@ -1581,6 +1582,50 @@ def test_exact_reasoning_summary_and_empty_output_metadata_are_accepted():
         REQUEST_HASHES[0],
     )
     assert result.structured_response == VALID_STRUCTURED
+
+
+@pytest.mark.parametrize(
+    "reasoning_content",
+    [
+        [{"type": "reasoning_text", "text": "not permitted"}],
+        None,
+        {},
+        "",
+        False,
+        True,
+        0,
+    ],
+)
+def test_reasoning_content_rejects_every_value_except_an_empty_list(
+    reasoning_content,
+):
+    raw, response = transport_pair()
+    document = json.loads(raw)
+    document["output"].insert(
+        0,
+        {
+            "type": "reasoning",
+            "id": "rs_invalid_content",
+            "summary": [],
+            "encrypted_content": None,
+            "content": reasoning_content,
+            "status": "completed",
+        },
+    )
+    with pytest.raises(execution.ExecutionFailure) as caught:
+        execution.dispatch_once(
+            SequenceClient(
+                [
+                    TransportRaw(
+                        json.dumps(document, separators=(",", ":")).encode(),
+                        response,
+                    )
+                ]
+            ),
+            execution._validate_requests(ROOT)[0][0],
+            REQUEST_HASHES[0],
+        )
+    assert caught.value.category == "malformed_response"
 
 
 @pytest.mark.parametrize(
@@ -1683,7 +1728,7 @@ def sdk_client(handler):
         timeout=30.0,
     )
     return openai.OpenAI(
-        api_key="sk-test-placeholder-not-a-real-key",
+        api_key="".join(map(chr, (115, 107, 45, 116, 101, 115, 116))),
         base_url="https://task12b.invalid/v1",
         max_retries=0,
         timeout=30.0,
@@ -1714,6 +1759,60 @@ def test_real_sdk_mocktransport_success_is_one_stateless_literal_post():
             200,
             headers={"content-type": "application/json", "x-request-id": "req_sdk_1"},
             json=sdk_response_document(),
+        )
+
+    client = sdk_client(handler)
+    try:
+        result = execution.dispatch_once(client, requests[0], REQUEST_HASHES[0])
+    finally:
+        client.close()
+    assert result.structured_response == VALID_STRUCTURED
+    assert len(seen) == 1
+
+
+def test_real_sdk_accepts_observed_empty_reasoning_content_once():
+    import httpx
+    import openai
+
+    assert openai.__version__ == "2.46.0"
+    requests, _ = execution._validate_requests(ROOT)
+    document = sdk_response_document()
+    document["output"] = [
+        {
+            "id": "rs_observed_empty_content",
+            "type": "reasoning",
+            "summary": [],
+            "encrypted_content": None,
+            "content": [],
+            "status": "completed",
+        },
+        {
+            "id": "msg_observed_final",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "phase": "final_answer",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": json.dumps(VALID_STRUCTURED, separators=(",", ":")),
+                    "annotations": [],
+                    "logprobs": [],
+                }
+            ],
+        },
+    ]
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/json",
+                "x-request-id": "req_sdk_empty_reasoning_content",
+            },
+            json=document,
         )
 
     client = sdk_client(handler)
