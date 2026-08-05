@@ -1,0 +1,68 @@
+{
+  "readiness_version": "task12b-execution-readiness-repeated-draws-v2",
+  "authority": "offline-preparation-only",
+  "contract_lineage": {
+    "identity": "task12b-context-sensitivity-repeated-draws-v2@sha256:dc663097df44047c31c42997701f758822d22162cdcdf658a6fa4921288c3a1a",
+    "contract_path": "experiments/adaptive_selection/controls/task12b_context_replication_v2.json",
+    "raw_contract_sha256": "dc663097df44047c31c42997701f758822d22162cdcdf658a6fa4921288c3a1a",
+    "predecessor_contract_sha256": "0bf61722680aca83432f8f82d29b9d309673efbf2e750720682fa2ff4b7b16d1",
+    "predecessor_renderer_sha256": "6616ec0f8f8621490d0e2f83d5472d049881158cce59f685098fd593f62889ea"
+  },
+  "revision_boundaries": {
+    "historical_v1_executed_revision": "c1430801720f912d74bf180b521a075200252234",
+    "parser_remediation_revision": "e98c503",
+    "v2_scientific_contract_revision": "edf09bc04a79e00934395d7fe21fd6b17612bc10",
+    "v2_readiness_revision": "candidate_must_bind_exact_future_revision",
+    "v2_execution_revision": "requires_separate_exact_owner_authorization"
+  },
+  "execution": {
+    "network_requests_authorized_by_manifest": 0,
+    "approved_scheduled_unit_count": 45,
+    "candidate_grants_network_authority": false,
+    "owner_approval_written_by_software": false,
+    "separate_exact_digest_owner_echo_required": true,
+    "cli_owner_approval_writer_present": false,
+    "cli_exact_head_clean_preflight_before_candidate_and_execution": true,
+    "cli_offline_verification_export_lock_scoring_and_orphan_surfaces_present": true,
+    "cli_explicit_authorized_45_unit_execution_surface_present": true,
+    "one_claim_and_at_most_one_dispatch_per_unit": true,
+    "retries_fallbacks_replacements_and_adaptation_forbidden": true
+  },
+  "randomization": {
+    "execution_blocks": 5,
+    "units_per_block": 9,
+    "unique_blind_aliases": 45,
+    "independent_assessment_order": true,
+    "candidate_binds_private_mapping_commitment": true
+  },
+  "provider_configuration": {
+    "model": "gpt-5.6-terra",
+    "openai_version": "2.46.0",
+    "httpx_version": "0.28.1",
+    "reasoning_effort": "medium",
+    "max_retries": 0,
+    "max_output_tokens": 2048,
+    "store": false,
+    "stream": false,
+    "timeout_seconds": 30.0,
+    "tools": []
+  },
+  "budget": {
+    "currency": "USD",
+    "conservative_execution_ceiling": "1.470820",
+    "hard_owner_cap": "2.00",
+    "input_per_million": "2.00",
+    "cached_input_per_million": "0.20",
+    "cache_write_input_per_million": "2.50",
+    "output_per_million": "12.00",
+    "pricing_frozen_on": "2026-08-04",
+    "official_pricing_source_url": "https://developers.openai.com/api/docs/pricing",
+    "pricing_must_be_reverified_before_candidate_preparation": true
+  },
+  "privacy": {
+    "predecessor_outputs_remain_sealed_unscored": true,
+    "predecessor_mapping_must_not_be_read_or_revealed": true,
+    "blind_export_omits_controller_and_authority_metadata": true,
+    "mapping_private_until_immutable_annotation_lock": true
+  }
+}
