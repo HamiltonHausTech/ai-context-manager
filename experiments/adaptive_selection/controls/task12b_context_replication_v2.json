@@ -1,0 +1,157 @@
+{
+  "assessment": {
+    "alias_mapping_private_until_annotation_lock": true,
+    "blind_annotation_fields": [
+      "assessment_alias",
+      "criteria",
+      "critical_finding"
+    ],
+    "resolved_scoring_record_fields": [
+      "unit_id",
+      "criteria",
+      "critical_finding",
+      "locked",
+      "evidence_coherent"
+    ],
+    "scoring_requires_verified_alias_based_annotation_lock": true,
+    "criterion_status_scores": {
+      "contradicted": "0.0",
+      "met": "1.0",
+      "not_met": "0.0",
+      "partially_met": "0.5",
+      "unresolved": "0.0"
+    },
+    "critical_finding_cap": "0.20",
+    "rubrics_inherited_unchanged_from_predecessor": true
+  },
+  "base_cells": [
+    {
+      "base_cell_id": "cell-k4m2",
+      "condition": "correct_context",
+      "family": "personal_host_network_operations",
+      "request_sha256": "07d3a42b2267a187ba1234b80c22bd221a355f9905df51235c1b03f3e226462e"
+    },
+    {
+      "base_cell_id": "cell-y9h4",
+      "condition": "stale_context",
+      "family": "software_dependency_and_evidence_boundary",
+      "request_sha256": "a7b50fbffbbbaaa876852fe7f791b1568d1613a2919b3b3d136710d72be95c1d"
+    },
+    {
+      "base_cell_id": "cell-m8t3",
+      "condition": "withheld_context",
+      "family": "git_repository_state_diagnosis",
+      "request_sha256": "e2643c1988e3e7acb3f6fbeedee33c59db76ce3a3fd0f4ff0791a3c466dc1e19"
+    },
+    {
+      "base_cell_id": "cell-v3x8",
+      "condition": "stale_context",
+      "family": "personal_host_network_operations",
+      "request_sha256": "8f9e3584563e914d2110bd400bba9972c4a4e6419f86fc6897b3505dfc6bb91e"
+    },
+    {
+      "base_cell_id": "cell-b8n5",
+      "condition": "correct_context",
+      "family": "software_dependency_and_evidence_boundary",
+      "request_sha256": "a9ff62775f3b7026d69167a72ac27339fa1730233caa72c67ad879bff39b15fe"
+    },
+    {
+      "base_cell_id": "cell-z5f7",
+      "condition": "stale_context",
+      "family": "git_repository_state_diagnosis",
+      "request_sha256": "490f667e064d0909bcef38cb7cf60e445eeceeec1a255ef462f5106c1336588b"
+    },
+    {
+      "base_cell_id": "cell-p7q9",
+      "condition": "withheld_context",
+      "family": "personal_host_network_operations",
+      "request_sha256": "7be7ff6a80d4cdde19ae34ff052d26b9697e4cda29cd8f381ab98131d2368b35"
+    },
+    {
+      "base_cell_id": "cell-r2d6",
+      "condition": "withheld_context",
+      "family": "software_dependency_and_evidence_boundary",
+      "request_sha256": "3b0f34553754aeb875c1cdf24d630ec5416e4ba84eee919f31d1c1673947fe8e"
+    },
+    {
+      "base_cell_id": "cell-c6w1",
+      "condition": "correct_context",
+      "family": "git_repository_state_diagnosis",
+      "request_sha256": "fed0326309b2a3522c05b1d5baee1b4d0bfed5f62211bbfc08eda6b311c8f8c4"
+    }
+  ],
+  "budget": {
+    "conservative_execution_ceiling": "1.470820",
+    "currency": "USD",
+    "hard_cap": "2.00",
+    "maximum_units": 45
+  },
+  "contract_version": "task12b-context-sensitivity-repeated-draws-v2",
+  "execution_authority": {
+    "network_requests_authorized_by_this_contract": 0,
+    "offline_scientific_layer_only": true,
+    "provider_execution_surface_present": false
+  },
+  "lineage": {
+    "predecessor_contract_path": "experiments/adaptive_selection/controls/task12b_context_calibration_v1.json",
+    "predecessor_contract_version": "task12b-context-sensitivity-calibration-v1",
+    "predecessor_raw_contract_sha256": "0bf61722680aca83432f8f82d29b9d309673efbf2e750720682fa2ff4b7b16d1",
+    "predecessor_renderer_sha256": "6616ec0f8f8621490d0e2f83d5472d049881158cce59f685098fd593f62889ea",
+    "predecessor_execution_disposition": "consumed_invalid_harness_execution_outputs_excluded_and_sealed_unscored",
+    "replacement_is_not_a_retry": true
+  },
+  "provider_configuration": {
+    "max_output_tokens": 2048,
+    "max_retries": 0,
+    "model": "gpt-5.6-terra",
+    "parallel_tool_calls": false,
+    "reasoning_effort": "medium",
+    "seed_supported": false,
+    "sdk": "openai-python",
+    "sdk_version": "2.46.0",
+    "service_tier": "default",
+    "store": false,
+    "stream": false,
+    "temperature_supported": false,
+    "timeout_seconds": 30.0,
+    "tools": [],
+    "truncation": "disabled"
+  },
+  "rendering": {
+    "draw_or_unit_metadata_provider_visible": false,
+    "renderer_reused_unchanged": true,
+    "requests_must_equal_predecessor_canonical_bytes": true
+  },
+  "schedule": {
+    "draw_indices": [1, 2, 3, 4, 5],
+    "draws_per_base_cell": 5,
+    "scheduled_units": 45
+  },
+  "statistics": {
+    "alpha": "0.05",
+    "bootstrap_confidence": "0.95",
+    "bootstrap_method": "deterministic_exhaustive_independent_group_resampling_percentile_descriptive_only",
+    "external_validity_units": 3,
+    "family_p_value": "maximum_of_correct_vs_withheld_and_correct_vs_stale_one_sided_p_values",
+    "holm_family_count": 3,
+    "material_advantage_threshold": "0.20",
+    "missingness": "observed_complete_case_means_and_p_values_descriptive_with_worst_case_five_draw_effect_bounds_and_endpoint_completed_permutation_p_values_for_decisions",
+    "permutation_method": "exact_exhaustive_one_sided_label_permutation_with_ties_extreme_missing_correct_zero_missing_comparator_one",
+    "pooled_45_draw_inference_forbidden": true
+  },
+  "validity": {
+    "all_five_correct_draws_required_for_family_pass": true,
+    "complete_locked_annotations_required": true,
+    "evidence_coherence_required": true,
+    "maximum_missing_schema_valid_successes": 3,
+    "minimum_schema_valid_successes_per_base_cell": 4,
+    "minimum_schema_valid_successes_total": 42
+  },
+  "verdict_order": [
+    "invalid_execution",
+    "stop_or_redesign_once",
+    "continue",
+    "narrow",
+    "stop_or_redesign_once"
+  ]
+}
