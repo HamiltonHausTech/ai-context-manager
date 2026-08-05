@@ -24,7 +24,7 @@ CREDENTIAL = "sha256:" + "3" * 64
 NOW = "2026-08-04T12:00:00.000000Z"
 
 
-def valid_transport_result(response_id="resp_test"):
+def valid_transport_result(response_id="resp_test", input_tokens=1):
     structured = {
         "diagnosis": "ok",
         "supporting_evidence_numbers": [1],
@@ -34,11 +34,11 @@ def valid_transport_result(response_id="resp_test"):
         "actions_to_avoid": ["guessing"],
     }
     usage = {
-        "input_tokens": 1,
+        "input_tokens": input_tokens,
         "cached_input_tokens": 0,
         "cache_write_input_tokens": 0,
         "output_tokens": 1,
-        "total_tokens": 2,
+        "total_tokens": input_tokens + 1,
     }
     raw = json.dumps(
         {
@@ -56,9 +56,9 @@ def valid_transport_result(response_id="resp_test"):
                 }
             ],
             "usage": {
-                "input_tokens": 1,
+                "input_tokens": input_tokens,
                 "output_tokens": 1,
-                "total_tokens": 2,
+                "total_tokens": input_tokens + 1,
                 "input_tokens_details": {
                     "cached_tokens": 0,
                     "cache_write_tokens": 0,
@@ -67,6 +67,9 @@ def valid_transport_result(response_id="resp_test"):
         },
         separators=(",", ":"),
     ).encode()
+    actual_cost, conservative_cost_upper_bound = execution.v1_execution.usage_costs(
+        usage
+    )
     return execution.TransportResult(
         raw,
         {
@@ -78,8 +81,8 @@ def valid_transport_result(response_id="resp_test"):
         },
         structured,
         usage,
-        "0.000014",
-        "0.0000145",
+        actual_cost,
+        conservative_cost_upper_bound,
     )
 
 
@@ -489,6 +492,67 @@ def test_expiry_and_cap_are_checked_fresh_before_each_claim(tmp_path, monkeypatc
         clock=lambda: NOW,
     )
     assert built == ["key"] and capped["dispatches"] == 0
+
+
+def test_observed_input_overrun_is_terminalized_as_budget_failure_before_success(
+    tmp_path,
+):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        envelope,
+        context,
+    ) = prepared(tmp_path)
+
+    class Client:
+        def close(self):
+            pass
+
+    calls = []
+
+    def oversized(_client, body, _request_hash):
+        calls.append(1)
+        return valid_transport_result(
+            input_tokens=len(execution.canonical_bytes(body)) + 1025
+        )
+
+    result = execution.execute_authorized_45_unit_manifest(
+        ROOT,
+        global_root,
+        local,
+        candidate_path,
+        approval_path,
+        mapping_path,
+        api_key="key",
+        client_factory=lambda key: Client(),
+        now=NOW,
+        code_revision=REVISION,
+        host_fingerprint_value=HOST,
+        account_fingerprint_value=ACCOUNT,
+        credential_fingerprint_value=CREDENTIAL,
+        dispatch=oversized,
+        clock=lambda: NOW,
+    )
+    mapping = execution.verify_mapping_v2(mapping_path, envelope["candidate"])[
+        "mapping"
+    ]
+    units = {unit.unit_id: unit for unit in build_schedule(load_contract()[0])}
+    first = units[mapping["execution_order"][0]]
+    terminal = execution.verify_unit_terminal(global_root, first, context)["terminal"]
+    assert len(calls) == 1
+    assert result == {
+        "status": "run_incomplete",
+        "dispatches": 1,
+        "successes": 0,
+        "failures": 1,
+        "pending": 44,
+    }
+    assert terminal["kind"] == "failure"
+    assert terminal["failure_category"] == "budget_bound_violation"
+    assert terminal["structured_response"] is None
 
 
 def test_lock_contention_blocks_before_client_construction(tmp_path):

@@ -1441,6 +1441,31 @@ def execute_authorized_45_unit_manifest(
                     if api_key.encode() in result.raw_bytes:
                         raise ExecutionFailure("secret_detected")
                     upper = result.conservative_cost_upper_bound
+                    projected_input_bound = len(canonical_bytes(body)) + 1024
+                    if result.usage[
+                        "input_tokens"
+                    ] > projected_input_bound or accepted + Decimal(upper) > Decimal(
+                        OWNER_CAP
+                    ):
+                        publish_unit_terminal(
+                            global_root,
+                            local_root,
+                            unit,
+                            context,
+                            kind="failure",
+                            dispatch_invoked=True,
+                            server_acceptance="yes",
+                            recorded_at=terminal_at,
+                            failure_category="budget_bound_violation",
+                            provider_visible_evidence=evidence[unit.base_cell_id],
+                            raw_bytes=result.raw_bytes,
+                            usage=result.usage,
+                            actual_cost=result.actual_cost,
+                            conservative_cost_upper_bound=upper,
+                            response_metadata=result.response_metadata,
+                        )
+                        accepted += Decimal(upper)
+                        break
                     publish_unit_terminal(
                         global_root,
                         local_root,
