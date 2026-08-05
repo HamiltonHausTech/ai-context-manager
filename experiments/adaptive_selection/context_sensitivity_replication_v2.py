@@ -27,10 +27,10 @@ CONTRACT_PATH = Path(
 )
 CONTRACT_VERSION = "task12b-context-sensitivity-repeated-draws-v2"
 PINNED_CONTRACT_SHA256 = (
-    "e967ce9872afec25da2b9803ed494545ae36725bbef128772e7fecf98f55de06"
+    "dc663097df44047c31c42997701f758822d22162cdcdf658a6fa4921288c3a1a"
 )
 PINNED_CANONICAL_SHA256 = (
-    "9a5d11b67ff0ebe63ef43f3d39c23c9dc3bee318afbfb404d8d8f18ec2eb1ad4"
+    "0c76df55a08cc3d2ccba41d380f0b067c5e31fcc110403349d7795030ec80d52"
 )
 V1_CONTRACT_SHA256 = v1.PINNED_CONTRACT_SHA256
 V1_RENDERER_SHA256 = "6616ec0f8f8621490d0e2f83d5472d049881158cce59f685098fd593f62889ea"
@@ -269,6 +269,39 @@ def exact_one_sided_permutation_pvalue(
     return Fraction(extreme, total)
 
 
+def conservative_missing_permutation_pvalue(
+    correct: Sequence[Fraction],
+    comparator: Sequence[Fraction],
+    *,
+    planned_draws: int = 5,
+) -> Fraction:
+    """Return the worst-case exact p-value over bounded missing scores.
+
+    Scores are frozen to [0, 1]. For this one-sided contrast, assigning zero to
+    a missing correct draw and one to a missing comparator draw maximizes the
+    label-permutation p-value. When a missing value remains in its original
+    group, its contribution to the permuted and observed statistics changes at
+    the same rate. When it moves groups, increasing a comparator value or
+    decreasing a correct value can only add extreme permutations. Thus the
+    endpoint completion is the exact supremum over every admissible completion.
+    """
+    left = [Fraction(value) for value in correct]
+    right = [Fraction(value) for value in comparator]
+    if (
+        type(planned_draws) is not int
+        or planned_draws < 1
+        or not left
+        or not right
+        or len(left) > planned_draws
+        or len(right) > planned_draws
+        or any(value < 0 or value > 1 for value in left + right)
+    ):
+        _fail("missingness-sensitive permutation inputs are invalid")
+    completed_left = left + [Fraction(0)] * (planned_draws - len(left))
+    completed_right = right + [Fraction(1)] * (planned_draws - len(right))
+    return exact_one_sided_permutation_pvalue(completed_left, completed_right)
+
+
 def holm_correction(
     p_values: Sequence[Fraction], *, alpha: Fraction = Fraction(1, 20)
 ) -> List[Dict[str, Any]]:
@@ -362,13 +395,23 @@ def analyze_family(
 
     worst_withheld = worst_case(withheld_values)
     worst_stale = worst_case(stale_values)
-    p_withheld = exact_one_sided_permutation_pvalue(correct_values, withheld_values)
-    p_stale = exact_one_sided_permutation_pvalue(correct_values, stale_values)
+    observed_p_withheld = exact_one_sided_permutation_pvalue(
+        correct_values, withheld_values
+    )
+    observed_p_stale = exact_one_sided_permutation_pvalue(correct_values, stale_values)
+    p_withheld = conservative_missing_permutation_pvalue(
+        correct_values, withheld_values, planned_draws=5
+    )
+    p_stale = conservative_missing_permutation_pvalue(
+        correct_values, stale_values, planned_draws=5
+    )
     return {
         "observed_correct_minus_withheld": observed_withheld,
         "observed_correct_minus_stale": observed_stale,
         "worst_case_correct_minus_withheld": worst_withheld,
         "worst_case_correct_minus_stale": worst_stale,
+        "observed_correct_vs_withheld_p": observed_p_withheld,
+        "observed_correct_vs_stale_p": observed_p_stale,
         "correct_vs_withheld_p": p_withheld,
         "correct_vs_stale_p": p_stale,
         "family_p": max(p_withheld, p_stale),
@@ -559,6 +602,12 @@ def score_replication(
                 ),
                 "worst_case_correct_minus_stale": _fraction_text(
                     analysis["worst_case_correct_minus_stale"]
+                ),
+                "observed_correct_vs_withheld_p": _fraction_text(
+                    analysis["observed_correct_vs_withheld_p"]
+                ),
+                "observed_correct_vs_stale_p": _fraction_text(
+                    analysis["observed_correct_vs_stale_p"]
                 ),
                 "correct_vs_withheld_p": _fraction_text(
                     analysis["correct_vs_withheld_p"]

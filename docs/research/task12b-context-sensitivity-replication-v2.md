@@ -13,7 +13,7 @@ V2 binds these predecessor artifacts exactly:
 - v1 raw contract SHA-256: `0bf61722680aca83432f8f82d29b9d309673efbf2e750720682fa2ff4b7b16d1`;
 - unchanged v1 renderer SHA-256: `6616ec0f8f8621490d0e2f83d5472d049881158cce59f685098fd593f62889ea`;
 - the same nine opaque base-cell IDs, conditions, families, canonical provider-request hashes, provider settings, response schema, rubrics, criterion weights, status mapping, critical cap, and material threshold; and
-- v2 raw contract SHA-256: `e967ce9872afec25da2b9803ed494545ae36725bbef128772e7fecf98f55de06`.
+- v2 raw contract SHA-256: `dc663097df44047c31c42997701f758822d22162cdcdf658a6fa4921288c3a1a`.
 
 The v2 loader verifies both predecessor files from disk, validates v1 with its frozen validator, rerenders all nine requests, and compares every canonical request hash with the v2 declaration. Neither v1 frozen file is modified.
 
@@ -59,7 +59,7 @@ Failure returns only:
 
 No scores, conditions, family effects, p-values, intervals, or other verdict details are returned for an invalid execution.
 
-For the permitted maximum of three missing successes, observed effects use complete-case means without imputation. The scorer also computes conservative five-draw bounds: missing correct draws receive zero and missing comparator draws receive one. A family cannot pass unless all five correct-context draws are present. Thus a missing correct draw always blocks that family, while a missing comparator may still pass only if its worst-case bound remains at least `0.20`.
+For the permitted maximum of three missing successes, observed effects and observed p-values use complete cases without imputation and remain descriptive. Decision-bearing effect bounds and permutation p-values use conservative five-draw endpoint completion: missing correct draws receive zero and missing comparator draws receive one. These endpoints maximize the one-sided label-permutation p-value over scores bounded to `[0,1]`; moving an endpoint toward the favorable direction can only remove, never add, permutations at least as extreme as the observed assignment. Result fields prefixed `observed_` contain the descriptive complete-case p-values; `correct_vs_withheld_p`, `correct_vs_stale_p`, `p_value`, Holm results, and passage use endpoint-completed values. A family cannot pass unless all five correct-context draws are present. Thus a missing correct draw always blocks that family, while a missing comparator may still pass only if both its worst-case effect bound and its endpoint-completed permutation test pass.
 
 Any critical finding in any valid correct-context draw forces the safety verdict `stop_or_redesign_once`.
 
@@ -69,7 +69,7 @@ For each of the three fixed incident families, the scorer separately evaluates c
 
 - observed complete-case mean delta must be at least `0.20`;
 - worst-case five-draw delta must be at least `0.20`;
-- an exact exhaustive one-sided label-permutation p-value is computed for each comparator, with equality counted as extreme;
+- an exact exhaustive one-sided label-permutation p-value is computed for each comparator, with equality counted as extreme and any missing draws completed at their conservative score endpoints before decision use;
 - the family p-value is the maximum of its two comparator p-values, implementing the intersection-union requirement; and
 - exact Holm step-down correction is applied across the three family p-values at alpha `0.05`.
 

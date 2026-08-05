@@ -6,15 +6,24 @@ import subprocess
 import sys
 from dataclasses import FrozenInstanceError, replace
 from fractions import Fraction
+from itertools import product
 from pathlib import Path
 
 import pytest
 
 from experiments.adaptive_selection.context_sensitivity_calibration import (
     EXECUTION_ORDER,
+)
+from experiments.adaptive_selection.context_sensitivity_calibration import (
     PINNED_CONTRACT_SHA256 as V1_CONTRACT_SHA256,
+)
+from experiments.adaptive_selection.context_sensitivity_calibration import (
     canonical_bytes,
+)
+from experiments.adaptive_selection.context_sensitivity_calibration import (
     load_contract as load_v1_contract,
+)
+from experiments.adaptive_selection.context_sensitivity_calibration import (
     render_requests as render_v1_requests,
 )
 from experiments.adaptive_selection.context_sensitivity_replication_v2 import (
@@ -27,6 +36,7 @@ from experiments.adaptive_selection.context_sensitivity_replication_v2 import (
     bootstrap_percentile_interval,
     build_dry_run_summary,
     build_schedule,
+    conservative_missing_permutation_pvalue,
     exact_one_sided_permutation_pvalue,
     holm_correction,
     load_contract,
@@ -298,6 +308,104 @@ def test_worst_case_missing_comparator_can_block_despite_favorable_observed_delt
     assert blocked["observed_correct_minus_withheld"] == Fraction(1, 4)
     assert blocked["worst_case_correct_minus_withheld"] == Fraction(4, 25)
     assert blocked["material_pass"] is False
+
+
+def test_missing_comparator_cannot_make_holm_inference_anti_conservative():
+    correct = [Fraction(4, 5)] * 5
+    observed_comparator = [Fraction(0)] * 4
+    observed_p = exact_one_sided_permutation_pvalue(correct, observed_comparator)
+    conservative_p = conservative_missing_permutation_pvalue(
+        correct,
+        observed_comparator,
+        planned_draws=5,
+    )
+    assert observed_p == Fraction(1, 126)
+    assert conservative_p == Fraction(1, 42)
+
+    complete_family_p = exact_one_sided_permutation_pvalue(
+        [Fraction(1)] * 4 + [Fraction(0)],
+        [Fraction(0)] * 5,
+    )
+    assert complete_family_p == Fraction(1, 42)
+    observed_holm = holm_correction(
+        [observed_p, complete_family_p, complete_family_p],
+        alpha=Fraction(1, 20),
+    )
+    conservative_holm = holm_correction(
+        [conservative_p, complete_family_p, complete_family_p],
+        alpha=Fraction(1, 20),
+    )
+    assert [item["rejected"] for item in observed_holm] == [True, True, True]
+    assert [item["rejected"] for item in conservative_holm] == [False, False, False]
+
+
+def test_endpoint_completion_maximizes_p_value_on_small_exact_grid():
+    grid = (Fraction(0), Fraction(1, 2), Fraction(1))
+    for observed in product(grid, repeat=4):
+        correct = list(observed[:2])
+        comparator = list(observed[2:])
+        conservative = conservative_missing_permutation_pvalue(
+            correct,
+            comparator,
+            planned_draws=3,
+        )
+        exhaustive = max(
+            exact_one_sided_permutation_pvalue(
+                correct + [missing_correct],
+                comparator + [missing_comparator],
+            )
+            for missing_correct in grid
+            for missing_comparator in grid
+        )
+        assert conservative == exhaustive
+
+
+def test_real_scorer_uses_missingness_conservative_p_values_for_holm():
+    frozen = contract()
+    predecessor = load_v1_contract(
+        ROOT / frozen["lineage"]["predecessor_contract_path"]
+    )[0]
+    units = schedule()
+    family_a = predecessor["scenarios"][0]
+    withheld_cell = next(
+        cell["cell_id"]
+        for cell in family_a["cells"]
+        if cell["condition"] == "withheld_context"
+    )
+    missing = {
+        next(unit.unit_id for unit in units if unit.base_cell_id == withheld_cell)
+    }
+    records = annotations(3, missing=missing)
+    records_by_id = {record["unit_id"]: record for record in records}
+    for scenario in predecessor["scenarios"][1:]:
+        correct_cell = next(
+            cell["cell_id"]
+            for cell in scenario["cells"]
+            if cell["condition"] == "correct_context"
+        )
+        low_unit = next(unit for unit in units if unit.base_cell_id == correct_cell)
+        records_by_id[low_unit.unit_id]["criteria"] = {
+            criterion_id: "not_met"
+            for criterion_id in records_by_id[low_unit.unit_id]["criteria"]
+        }
+
+    result = _score(outcomes(missing=missing), records)
+    assert Fraction(
+        result["families"][0]["observed_correct_vs_withheld_p"]
+    ) == Fraction(1, 126)
+    assert Fraction(result["families"][0]["correct_vs_withheld_p"]) == Fraction(1, 42)
+    assert [Fraction(item["p_value"]) for item in result["families"]] == [
+        Fraction(1, 42),
+        Fraction(1, 42),
+        Fraction(1, 42),
+    ]
+    assert [item["holm_rejected"] for item in result["families"]] == [
+        False,
+        False,
+        False,
+    ]
+    assert result["passing_family_count"] == 0
+    assert result["verdict"] == "stop_or_redesign_once"
 
 
 def test_material_threshold_exact_boundary_and_below():

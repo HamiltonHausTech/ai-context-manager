@@ -30,7 +30,7 @@ Each scheduled unit allows one claim and at most one dispatch. No retry, fallbac
 
 A verdict requires at least 42/45 schema-valid successes, at least 4/5 valid successes per base cell, complete locked annotations for every valid success, and coherent claims/terminals/raw/mapping/annotation evidence. Otherwise return `invalid_execution` without scoring or condition reveal.
 
-For up to three permitted missing units: no imputation in observed means; compute worst-case five-draw mean bounds. A family can pass only when all five correct-context draws are valid, none has a critical finding, both observed and worst-case correct-minus-comparator deltas are at least `0.20`, and the family satisfies the preregistered uncertainty requirement.
+For up to three permitted missing units: no imputation in descriptive observed means or p-values; compute worst-case five-draw mean bounds and decision-bearing endpoint-completed permutation p-values by assigning missing correct draws zero and missing comparator draws one. A family can pass only when all five correct-context draws are valid, none has a critical finding, both observed and worst-case correct-minus-comparator deltas are at least `0.20`, and the family satisfies the preregistered uncertainty requirement.
 
 Use exact rational arithmetic for permutation tests, Holm correction across three family intersection-union p-values, and deterministic descriptive bootstrap intervals. Never pool 45 draws as independent family evidence.
 

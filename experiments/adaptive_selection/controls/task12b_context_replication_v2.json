@@ -135,8 +135,8 @@
     "family_p_value": "maximum_of_correct_vs_withheld_and_correct_vs_stale_one_sided_p_values",
     "holm_family_count": 3,
     "material_advantage_threshold": "0.20",
-    "missingness": "observed_complete_case_means_and_worst_case_five_draw_bounds",
-    "permutation_method": "exact_exhaustive_one_sided_label_permutation_with_ties_extreme",
+    "missingness": "observed_complete_case_means_and_p_values_descriptive_with_worst_case_five_draw_effect_bounds_and_endpoint_completed_permutation_p_values_for_decisions",
+    "permutation_method": "exact_exhaustive_one_sided_label_permutation_with_ties_extreme_missing_correct_zero_missing_comparator_one",
     "pooled_45_draw_inference_forbidden": true
   },
   "validity": {
