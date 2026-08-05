@@ -434,6 +434,42 @@ def test_rehashed_terminal_semantic_contradictions_are_rejected(tmp_path):
         execution.verify_unit_terminal(global_root, unit, context, visible)
 
 
+def test_budget_failure_requires_raw_replay_proof_of_actual_input_overrun(tmp_path):
+    local, global_root, _, _, _, _, context = prepared(tmp_path)
+    unit = build_schedule(load_contract()[0])[0]
+    visible = execution._evidence_by_cell(ROOT)[unit.base_cell_id]
+    result = valid_transport_result()
+    execution.publish_unit_claim(global_root, local, unit, context, NOW)
+    published = execution.publish_unit_terminal(
+        global_root,
+        local,
+        unit,
+        context,
+        kind="success",
+        dispatch_invoked=True,
+        server_acceptance="yes",
+        recorded_at=NOW,
+        provider_visible_evidence=visible,
+        structured_response=result.structured_response,
+        raw_bytes=result.raw_bytes,
+        usage=result.usage,
+        actual_cost=result.actual_cost,
+        conservative_cost_upper_bound=result.conservative_cost_upper_bound,
+        response_metadata=result.response_metadata,
+    )
+    substituted = dict(published["terminal"])
+    substituted["kind"] = "failure"
+    substituted["failure_category"] = "budget_bound_violation"
+    substituted["structured_response"] = None
+    with pytest.raises(execution.ExecutionFailure):
+        execution._validate_terminal_semantics(
+            substituted,
+            raw_bytes=result.raw_bytes,
+            projected_input_bound=execution._projected_input_bound(unit),
+            expected_provider_visible_evidence=visible,
+        )
+
+
 def test_expiry_and_cap_are_checked_fresh_before_each_claim(tmp_path, monkeypatch):
     local, global_root, candidate_path, mapping_path, approval_path, _, _ = prepared(
         tmp_path
@@ -553,6 +589,120 @@ def test_observed_input_overrun_is_terminalized_as_budget_failure_before_success
     assert terminal["kind"] == "failure"
     assert terminal["failure_category"] == "budget_bound_violation"
     assert terminal["structured_response"] is None
+
+
+def test_post_dispatch_publication_failure_is_reraised_and_never_reclassified(
+    tmp_path, monkeypatch
+):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        envelope,
+        context,
+    ) = prepared(tmp_path)
+
+    class Client:
+        def close(self):
+            pass
+
+    dispatches = []
+    publications = []
+
+    def dispatched(*_args):
+        dispatches.append(1)
+        return valid_transport_result()
+
+    def fail_publication(*_args, **_kwargs):
+        publications.append(1)
+        raise execution.ExecutionFailure("simulated_terminal_publication_failure")
+
+    monkeypatch.setattr(execution, "publish_unit_terminal", fail_publication)
+    with pytest.raises(execution.ExecutionFailure) as failure:
+        execution.execute_authorized_45_unit_manifest(
+            ROOT,
+            global_root,
+            local,
+            candidate_path,
+            approval_path,
+            mapping_path,
+            api_key="key",
+            client_factory=lambda key: Client(),
+            now=NOW,
+            code_revision=REVISION,
+            host_fingerprint_value=HOST,
+            account_fingerprint_value=ACCOUNT,
+            credential_fingerprint_value=CREDENTIAL,
+            dispatch=dispatched,
+            clock=lambda: NOW,
+        )
+    mapping = execution.verify_mapping_v2(mapping_path, envelope["candidate"])[
+        "mapping"
+    ]
+    units = {unit.unit_id: unit for unit in build_schedule(load_contract()[0])}
+    first = units[mapping["execution_order"][0]]
+    assert failure.value.category == "simulated_terminal_publication_failure"
+    assert dispatches == [1]
+    assert publications == [1]
+    assert (
+        execution.classify_unit_state(global_root, local, first, context)
+        == "blocked_orphan_claim"
+    )
+
+
+def test_provider_accepted_secret_detection_preserves_accounting_and_stops(tmp_path):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        envelope,
+        context,
+    ) = prepared(tmp_path)
+
+    class Client:
+        def close(self):
+            pass
+
+    accepted = valid_transport_result(response_id="key")
+    calls = []
+    result = execution.execute_authorized_45_unit_manifest(
+        ROOT,
+        global_root,
+        local,
+        candidate_path,
+        approval_path,
+        mapping_path,
+        api_key="key",
+        client_factory=lambda key: Client(),
+        now=NOW,
+        code_revision=REVISION,
+        host_fingerprint_value=HOST,
+        account_fingerprint_value=ACCOUNT,
+        credential_fingerprint_value=CREDENTIAL,
+        dispatch=lambda *_args: calls.append(1) or accepted,
+        clock=lambda: NOW,
+    )
+    mapping = execution.verify_mapping_v2(mapping_path, envelope["candidate"])[
+        "mapping"
+    ]
+    units = {unit.unit_id: unit for unit in build_schedule(load_contract()[0])}
+    first = units[mapping["execution_order"][0]]
+    terminal = execution.verify_unit_terminal(global_root, first, context)["terminal"]
+    assert calls == [1]
+    assert result["failures"] == 1 and result["pending"] == 44
+    assert terminal["failure_category"] == "secret_detected"
+    assert terminal["raw_sha256"] is None
+    assert terminal["usage"] == accepted.usage
+    assert terminal["actual_cost"] == accepted.actual_cost
+    assert (
+        terminal["conservative_cost_upper_bound"]
+        == accepted.conservative_cost_upper_bound
+    )
+    assert terminal["response_metadata"] == accepted.response_metadata
 
 
 def test_lock_contention_blocks_before_client_construction(tmp_path):

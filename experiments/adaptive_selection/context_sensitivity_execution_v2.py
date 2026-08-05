@@ -981,10 +981,16 @@ def _request_metadata(request_hash: str) -> Dict[str, Any]:
     }
 
 
+def _projected_input_bound(unit: ScheduledUnit) -> int:
+    body = render_unit_requests(load_contract()[0], [unit])[0]
+    return len(canonical_bytes(body)) + 1024
+
+
 def _validate_terminal_semantics(
     terminal: Mapping[str, Any],
     *,
     raw_bytes: Optional[bytes],
+    projected_input_bound: int,
     expected_provider_visible_evidence: Optional[Mapping[str, Any]] = None,
 ) -> None:
     kind = terminal["kind"]
@@ -1054,6 +1060,30 @@ def _validate_terminal_semantics(
         return
     if terminal["failure_category"] not in FAILURE_CATEGORIES or structured is not None:
         _fail()
+    if terminal["failure_category"] == "budget_bound_violation":
+        if (
+            dispatch_invoked is not True
+            or acceptance != "yes"
+            or not has_raw
+            or usage is None
+            or type(projected_input_bound) is not int
+            or projected_input_bound <= 0
+            or not v1_execution._valid_success_response_metadata(metadata)
+        ):
+            _fail()
+        validated_usage = cast(Mapping[str, Any], usage)
+        validated_metadata = cast(Mapping[str, Any], metadata)
+        projection = v1_execution._replay_raw_success(cast(bytes, raw_bytes))
+        if (
+            validated_usage != projection["usage"]
+            or actual != projection["actual_cost"]
+            or upper != projection["conservative_cost_upper_bound"]
+            or validated_metadata["response_id"] != projection["response_id"]
+            or validated_metadata["observed_model"] != projection["observed_model"]
+            or validated_usage["input_tokens"] <= projected_input_bound
+        ):
+            _fail()
+        return
     if kind == "invalid_ambiguous":
         if (
             any(
@@ -1136,7 +1166,11 @@ def publish_unit_terminal(
         "conservative_cost_upper_bound": conservative_cost_upper_bound,
         "recorded_at": recorded_at,
     }
-    _validate_terminal_semantics(terminal, raw_bytes=raw_bytes)
+    _validate_terminal_semantics(
+        terminal,
+        raw_bytes=raw_bytes,
+        projected_input_bound=_projected_input_bound(unit),
+    )
     if _parse_time(recorded_at) < _parse_time(claim["claim"]["claimed_at"]):
         _fail()
     if raw_bytes is not None:
@@ -1218,6 +1252,7 @@ def verify_unit_terminal(
     _validate_terminal_semantics(
         terminal,
         raw_bytes=raw_bytes,
+        projected_input_bound=_projected_input_bound(unit),
         expected_provider_visible_evidence=expected_provider_visible_evidence,
     )
     if _parse_time(terminal["recorded_at"]) < _parse_time(claim["claim"]["claimed_at"]):
@@ -1435,11 +1470,31 @@ def execute_authorized_45_unit_manifest(
                     _fail()
                 publish_unit_claim(global_root, local_root, unit, context, observed)
                 dispatches += 1
+                dispatch_completed = False
                 try:
                     result = dispatch(client, body, request_hash)
+                    dispatch_completed = True
                     terminal_at = current_clock()
                     if api_key.encode() in result.raw_bytes:
-                        raise ExecutionFailure("secret_detected")
+                        upper = result.conservative_cost_upper_bound
+                        publish_unit_terminal(
+                            global_root,
+                            local_root,
+                            unit,
+                            context,
+                            kind="failure",
+                            dispatch_invoked=True,
+                            server_acceptance="yes",
+                            recorded_at=terminal_at,
+                            failure_category="secret_detected",
+                            provider_visible_evidence=evidence[unit.base_cell_id],
+                            usage=result.usage,
+                            actual_cost=result.actual_cost,
+                            conservative_cost_upper_bound=upper,
+                            response_metadata=result.response_metadata,
+                        )
+                        accepted += Decimal(upper)
+                        break
                     upper = result.conservative_cost_upper_bound
                     projected_input_bound = len(canonical_bytes(body)) + 1024
                     if result.usage[
@@ -1484,6 +1539,8 @@ def execute_authorized_45_unit_manifest(
                         response_metadata=result.response_metadata,
                     )
                 except (ExecutionFailure, V1TransportFailure) as failure:
+                    if dispatch_completed:
+                        raise
                     terminal_at = current_clock()
                     raw_bytes = getattr(failure, "raw_bytes", None)
                     if raw_bytes is not None and api_key.encode() in raw_bytes:
