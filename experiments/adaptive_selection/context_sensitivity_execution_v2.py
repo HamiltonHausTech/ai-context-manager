@@ -1572,6 +1572,9 @@ def execute_authorized_45_unit_manifest(
                         conservative_cost_upper_bound=upper,
                         response_metadata=getattr(failure, "response_metadata", None),
                     )
+                    if category == "secret_detected":
+                        accepted += Decimal(upper)
+                        break
                 accepted += Decimal(upper)
                 remaining = sum(
                     (_static_upper(requests[x.unit_id]) for x in pending[index + 1 :]),

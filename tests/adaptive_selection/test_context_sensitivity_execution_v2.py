@@ -705,6 +705,70 @@ def test_provider_accepted_secret_detection_preserves_accounting_and_stops(tmp_p
     assert terminal["response_metadata"] == accepted.response_metadata
 
 
+def test_transport_failure_secret_detection_preserves_accounting_and_stops(tmp_path):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        envelope,
+        context,
+    ) = prepared(tmp_path)
+
+    class Client:
+        def close(self):
+            pass
+
+    accepted = valid_transport_result()
+    failure = execution.V1TransportFailure("invalid_response")
+    failure.raw_bytes = b"provider response accidentally contained key"
+    failure.response_metadata = accepted.response_metadata
+    failure.usage = accepted.usage
+    failure.actual_cost = accepted.actual_cost
+    failure.conservative_cost_upper_bound = accepted.conservative_cost_upper_bound
+    calls = []
+
+    def failed_dispatch(*_args):
+        calls.append(1)
+        raise failure
+
+    result = execution.execute_authorized_45_unit_manifest(
+        ROOT,
+        global_root,
+        local,
+        candidate_path,
+        approval_path,
+        mapping_path,
+        api_key="key",
+        client_factory=lambda key: Client(),
+        now=NOW,
+        code_revision=REVISION,
+        host_fingerprint_value=HOST,
+        account_fingerprint_value=ACCOUNT,
+        credential_fingerprint_value=CREDENTIAL,
+        dispatch=failed_dispatch,
+        clock=lambda: NOW,
+    )
+    mapping = execution.verify_mapping_v2(mapping_path, envelope["candidate"])[
+        "mapping"
+    ]
+    units = {unit.unit_id: unit for unit in build_schedule(load_contract()[0])}
+    first = units[mapping["execution_order"][0]]
+    terminal = execution.verify_unit_terminal(global_root, first, context)["terminal"]
+    assert calls == [1]
+    assert result["failures"] == 1 and result["pending"] == 44
+    assert terminal["failure_category"] == "secret_detected"
+    assert terminal["raw_sha256"] is None
+    assert terminal["usage"] == accepted.usage
+    assert terminal["actual_cost"] == accepted.actual_cost
+    assert (
+        terminal["conservative_cost_upper_bound"]
+        == accepted.conservative_cost_upper_bound
+    )
+    assert terminal["response_metadata"] == accepted.response_metadata
+
+
 def test_lock_contention_blocks_before_client_construction(tmp_path):
     local, global_root, candidate_path, mapping_path, approval_path, _, _ = prepared(
         tmp_path
