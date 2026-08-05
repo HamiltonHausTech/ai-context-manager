@@ -986,11 +986,17 @@ def _projected_input_bound(unit: ScheduledUnit) -> int:
     return len(canonical_bytes(body)) + 1024
 
 
+def _projected_cost_upper_bound(unit: ScheduledUnit) -> Decimal:
+    body = render_unit_requests(load_contract()[0], [unit])[0]
+    return _static_upper(body)
+
+
 def _validate_terminal_semantics(
     terminal: Mapping[str, Any],
     *,
     raw_bytes: Optional[bytes],
     projected_input_bound: int,
+    projected_cost_upper_bound: Decimal,
     expected_provider_visible_evidence: Optional[Mapping[str, Any]] = None,
 ) -> None:
     kind = terminal["kind"]
@@ -1068,6 +1074,8 @@ def _validate_terminal_semantics(
             or usage is None
             or type(projected_input_bound) is not int
             or projected_input_bound <= 0
+            or type(projected_cost_upper_bound) is not Decimal
+            or projected_cost_upper_bound <= 0
             or not v1_execution._valid_success_response_metadata(metadata)
         ):
             _fail()
@@ -1080,7 +1088,10 @@ def _validate_terminal_semantics(
             or upper != projection["conservative_cost_upper_bound"]
             or validated_metadata["response_id"] != projection["response_id"]
             or validated_metadata["observed_model"] != projection["observed_model"]
-            or validated_usage["input_tokens"] <= projected_input_bound
+            or (
+                validated_usage["input_tokens"] <= projected_input_bound
+                and Decimal(cast(str, upper)) <= projected_cost_upper_bound
+            )
         ):
             _fail()
         return
@@ -1170,6 +1181,7 @@ def publish_unit_terminal(
         terminal,
         raw_bytes=raw_bytes,
         projected_input_bound=_projected_input_bound(unit),
+        projected_cost_upper_bound=_projected_cost_upper_bound(unit),
     )
     if _parse_time(recorded_at) < _parse_time(claim["claim"]["claimed_at"]):
         _fail()
@@ -1253,6 +1265,7 @@ def verify_unit_terminal(
         terminal,
         raw_bytes=raw_bytes,
         projected_input_bound=_projected_input_bound(unit),
+        projected_cost_upper_bound=_projected_cost_upper_bound(unit),
         expected_provider_visible_evidence=expected_provider_visible_evidence,
     )
     if _parse_time(terminal["recorded_at"]) < _parse_time(claim["claim"]["claimed_at"]):
@@ -1497,10 +1510,10 @@ def execute_authorized_45_unit_manifest(
                         break
                     upper = result.conservative_cost_upper_bound
                     projected_input_bound = len(canonical_bytes(body)) + 1024
-                    if result.usage[
-                        "input_tokens"
-                    ] > projected_input_bound or accepted + Decimal(upper) > Decimal(
-                        OWNER_CAP
+                    projected_cost_upper = _static_upper(body)
+                    if (
+                        result.usage["input_tokens"] > projected_input_bound
+                        or Decimal(upper) > projected_cost_upper
                     ):
                         publish_unit_terminal(
                             global_root,
@@ -1521,6 +1534,8 @@ def execute_authorized_45_unit_manifest(
                         )
                         accepted += Decimal(upper)
                         break
+                    if accepted + Decimal(upper) > Decimal(OWNER_CAP):
+                        raise ExecutionFailure("budget_state_invariant_violation")
                     publish_unit_terminal(
                         global_root,
                         local_root,

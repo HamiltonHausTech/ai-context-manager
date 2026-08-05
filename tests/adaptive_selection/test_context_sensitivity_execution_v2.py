@@ -466,6 +466,7 @@ def test_budget_failure_requires_raw_replay_proof_of_actual_input_overrun(tmp_pa
             substituted,
             raw_bytes=result.raw_bytes,
             projected_input_bound=execution._projected_input_bound(unit),
+            projected_cost_upper_bound=execution._projected_cost_upper_bound(unit),
             expected_provider_visible_evidence=visible,
         )
 
@@ -589,6 +590,61 @@ def test_observed_input_overrun_is_terminalized_as_budget_failure_before_success
     assert terminal["kind"] == "failure"
     assert terminal["failure_category"] == "budget_bound_violation"
     assert terminal["structured_response"] is None
+
+
+def test_post_dispatch_cap_invariant_fails_closed_without_invalid_terminal(
+    tmp_path, monkeypatch
+):
+    (
+        local,
+        global_root,
+        candidate_path,
+        mapping_path,
+        approval_path,
+        envelope,
+        context,
+    ) = prepared(tmp_path)
+
+    class Client:
+        def close(self):
+            pass
+
+    calls = []
+
+    def accepted_after_cap_shift(*_args):
+        calls.append(1)
+        monkeypatch.setattr(execution, "OWNER_CAP", "0.000001")
+        return valid_transport_result()
+
+    with pytest.raises(execution.ExecutionFailure) as failure:
+        execution.execute_authorized_45_unit_manifest(
+            ROOT,
+            global_root,
+            local,
+            candidate_path,
+            approval_path,
+            mapping_path,
+            api_key="key",
+            client_factory=lambda key: Client(),
+            now=NOW,
+            code_revision=REVISION,
+            host_fingerprint_value=HOST,
+            account_fingerprint_value=ACCOUNT,
+            credential_fingerprint_value=CREDENTIAL,
+            dispatch=accepted_after_cap_shift,
+            clock=lambda: NOW,
+        )
+    mapping = execution.verify_mapping_v2(mapping_path, envelope["candidate"])[
+        "mapping"
+    ]
+    units = {unit.unit_id: unit for unit in build_schedule(load_contract()[0])}
+    first = units[mapping["execution_order"][0]]
+    assert failure.value.category == "budget_state_invariant_violation"
+    assert calls == [1]
+    assert (
+        execution.classify_unit_state(global_root, local, first, context)
+        == "blocked_orphan_claim"
+    )
 
 
 def test_post_dispatch_publication_failure_is_reraised_and_never_reclassified(
